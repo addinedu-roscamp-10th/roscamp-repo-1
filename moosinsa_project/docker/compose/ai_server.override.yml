@@ -1,0 +1,10 @@
+# 개발 환경 override
+# 사용법: docker compose -f ../services/ai_server/docker-compose.yml -f ai_server.override.yml up
+
+services:
+  llm_server:
+    volumes:
+      - ../../services/ai_server/llm:/app
+  cv_server:
+    volumes:
+      - ../../services/ai_server/vision:/app

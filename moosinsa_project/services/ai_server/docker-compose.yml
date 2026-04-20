@@ -1,0 +1,49 @@
+services:
+  llm_server:
+    build:
+      context: ./llm
+      dockerfile: Dockerfile
+    container_name: moosinsa_llm
+    ports:
+      - "8001:8001"
+    environment:
+      - CV_SERVER_URL=http://cv_server:8002
+      - MAIN_SERVER_URL=http://[MAIN_SERVER_IP]:8000
+    # GPU 사용 시 아래 주석 해제
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - ai_net
+
+  cv_server:
+    build:
+      context: ./vision
+      dockerfile: Dockerfile
+    container_name: moosinsa_cv
+    ports:
+      - "8002:8002"
+    environment:
+      - LLM_SERVER_URL=http://llm_server:8001
+      - MAIN_SERVER_URL=http://[MAIN_SERVER_IP]:8000
+      - CAMERA_UDP_PORT=5000
+    # GPU 사용 시 아래 주석 해제
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - ai_net
+
+networks:
+  ai_net:
+    driver: bridge

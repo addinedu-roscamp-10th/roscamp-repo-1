@@ -1,0 +1,9 @@
+# 개발 환경 override
+# 사용법: docker compose -f ../services/main_server/docker-compose.yml -f main_server.override.yml up
+
+services:
+  api_server:
+    volumes:
+      - ../../services/main_server/api_server:/app  # 코드 변경 실시간 반영
+    environment:
+      - DEBUG=true

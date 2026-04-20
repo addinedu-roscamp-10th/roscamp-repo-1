@@ -1,0 +1,11 @@
+# CV / YOLO 추론
+opencv-python-headless>=4.9.0
+numpy>=1.26.0
+# ultralytics>=8.2.0   # YOLOv8/v11 사용 시
+
+# HTTP/WebSocket 서버
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+
+python-dotenv>=1.0.0
