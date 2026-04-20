@@ -24,7 +24,7 @@ feature/  개인 기능 개발 브랜치. develop에서 따고 develop으로 mer
 feature/[이름]-[컴포넌트]-[기능]
 
 예)
-feature/jihun-api-tryon
+feature/daejaehun-api-tryon
 feature/sujin-kiosk-main
 feature/minho-cv-yolo
 ```
@@ -55,7 +55,7 @@ git pull origin develop
 git checkout -b feature/[이름]-[컴포넌트]-[기능]
 
 # 예시
-git checkout -b feature/jihun-api-tryon
+git checkout -b feature/daejaehun-api-tryon
 ```
 
 ---
@@ -81,20 +81,24 @@ git commit -m "Feat: 시착 요청 API 엔드포인트 추가"
 
 ---
 
-### 4단계 — 작업 완료 후 push
+### 4단계 — 작업 완료 후 push 및 branch 삭제
 
 ```bash
 # 내 feature 브랜치 push
 git push origin feature/[이름]-[컴포넌트]-[기능]
 
 # 예시
-git push origin feature/jihun-api-tryon
-```
+git push origin feature/daejaehun-api-tryon
 
-push하면 GitHub Actions가 자동으로 develop에 merge해줌
-1. feature 브랜치 push 후 Actions 탭에서 초록 체크 확인
-2. 빨간 X 뜨면 클릭해서 에러 확인 후 팀장한테 공유
+# push하면 GitHub Actions가 자동으로 develop에 merge해줌
+# 1. feature 브랜치 push 후 Actions 탭에서 초록 체크 확인
+# 2. 빨간 X 뜨면 클릭해서 에러 확인 후 팀장한테 공유
 
+# 원격 브랜치 삭제
+git push origin --delete feature/daejaehun-api-tryon
+
+# 로컬 브랜치 삭제
+git branch -d feature/daejaehun-api-tryon
 ---
 
 ### 5단계 — 다음 작업 시작할 때
@@ -116,13 +120,13 @@ git checkout -b feature/[이름]-[다음기능]
 
 ```bash
 # develop 최신 내용을 내 브랜치에 먼저 합치기
-git checkout feature/jihun-api-tryon
+git checkout feature/daejaehun-api-tryon
 git pull origin develop
 
 # 충돌 파일 열어서 직접 수정 후
 git add .
 git commit -m "Fix: develop 브랜치 충돌 해결"
-git push origin feature/jihun-api-tryon
+git push origin feature/daejaehun-api-tryon
 ```
 
 ---
