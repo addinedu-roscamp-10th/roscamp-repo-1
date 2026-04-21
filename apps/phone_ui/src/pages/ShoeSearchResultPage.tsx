@@ -13,7 +13,7 @@ type ShoeItem = {
   tags?: string;
 };
 
-const API = `http://192.168.0.20:8000`;
+const API = `http://192.168.0.7:8000`;
 
 
 // const location = useLocation();
