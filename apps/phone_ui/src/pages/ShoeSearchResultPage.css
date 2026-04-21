@@ -1,0 +1,168 @@
+.search-page-container {
+  min-height: 100vh;
+  background: #f3f4f6;
+  padding: 24px 16px 40px;
+  box-sizing: border-box;
+}
+
+.search-main-card {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 28px;
+  padding: 24px;
+  box-sizing: border-box;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+.search-header {
+  margin-bottom: 20px;
+}
+
+.search-page-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.search-page-sub {
+  margin-top: 8px;
+  font-size: 15px;
+  color: #6b7280;
+}
+
+.search-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.shoe-result-card {
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  background: #f9fafb;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.shoe-result-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.shoe-result-thumb {
+  width: 150px;
+  min-width: 150px;
+  height: 150px;
+  border-radius: 20px;
+  background: #e5e7eb;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shoe-result-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shoe-result-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.shoe-result-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shoe-result-name {
+  font-size: 25px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.shoe-result-meta {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.shoe-result-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 16px;
+  color: #1f2937;
+}
+
+.shoe-result-row .label {
+  min-width: 70px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.shoe-result-row .value {
+  flex: 1;
+  color: #111827;
+  word-break: break-word;
+}
+
+.shoe-result-price {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.empty-result-box {
+  border-radius: 20px;
+  background: #f9fafb;
+  border: 1px dashed #d1d5db;
+  padding: 40px 20px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 16px;
+}
+
+@media (max-width: 768px) {
+  .search-main-card {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .shoe-result-card {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .shoe-result-thumb {
+    width: 100%;
+    min-width: 100%;
+    height: 220px;
+  }
+
+  .shoe-result-name {
+    font-size: 22px;
+  }
+}
