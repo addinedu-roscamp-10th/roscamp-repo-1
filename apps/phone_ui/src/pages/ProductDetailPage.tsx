@@ -75,7 +75,7 @@ export default function ProductDetailPage() {
       setLoading(false);
       return;
     }
-
+    console.log("use effect[] ================== shoe_id: ", id);
     const fetchProduct = async () => {
       try {
         
@@ -116,10 +116,11 @@ export default function ProductDetailPage() {
   }, []);
 
   useEffect(()=>{
-    console.log("use effect ================== product ");
+    
     if (!product?.shoe_id) return; // (product 아직 없을때 방지)
 
     const fetchInventory = async () => {
+      console.log("use effect[product] ================== shoe_id: ", product.shoe_id);
       try {
         const res = await fetch(
           `${API}/find_shoe_information?data=${encodeURIComponent(
