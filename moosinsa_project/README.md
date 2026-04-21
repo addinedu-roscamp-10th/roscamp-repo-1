@@ -66,7 +66,7 @@ git checkout -b feature/daejaehun-api-tryon
 # 변경된 파일 확인
 git status
 
-# 변경 내용 확인
+# 변경 내용 확인(확인 후 q로 나오기)
 git diff
 
 # 파일 스테이징 (전체)
