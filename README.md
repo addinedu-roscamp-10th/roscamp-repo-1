@@ -1,7 +1,13 @@
 # roscamp-repo-1
+
 # Moosinsa Project
+
+---
+
 ## 프로젝트 개요
 ROS2와 AI를 활용한 자율주행 로봇개발자 부트캠프 1팀 저장소. 무신사 (Moosinsa) : 자율주행 로봇과 로봇팔을 이용한 언택트 슈즈 피팅 및 매장 재고 관리 시스템
+
+---
 
 ## 구조
 - `apps/`     — UI 클라이언트 (PySide6, React)
