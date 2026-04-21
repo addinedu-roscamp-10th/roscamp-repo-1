@@ -31,7 +31,7 @@ type ShoeDetailInfo = {
 
 const seats = [1, 2, 3, 4];
 // const API = `http://${window.location.hostname}:8000`;
-const API = `http://192.168.0.20:8000`;
+const API = `http://192.168.0.7:8000`;
 
 function getShoeId() {
   const params = new URLSearchParams(window.location.search);
