@@ -2,10 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './ProductDetailPage.css';
 
-// type ProductColor = {
-//   name: string;
-//   value: string;
-// };
 
 type Product = {
   shoe_id: string;
@@ -30,8 +26,9 @@ type ShoeDetailInfo = {
 };
 
 const seats = [1, 2, 3, 4];
-// const API = `http://${window.location.hostname}:8000`;
-const API = `http://192.168.0.7:8000`;
+const API = import.meta.env.VITE_API_URL;
+
+console.log("API:", API);
 
 function getShoeId() {
   const params = new URLSearchParams(window.location.search);
