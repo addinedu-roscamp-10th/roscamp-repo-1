@@ -17,14 +17,6 @@ type ShoeItem = {
 const API = import.meta.env.VITE_API_URL;
 console.log("API:", API );
 
-// const API = `http://192.168.0.7:8000`;
-
-
-// const location = useLocation();
-// const shoes = location.state?.shoes || [];
-
-// console.log('search result shoes:', shoes);
-
 function parseSizes(value: ShoeItem['sizes']): string[] {
   if (Array.isArray(value)) {
     return value.map(String);
