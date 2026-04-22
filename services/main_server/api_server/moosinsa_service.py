@@ -43,10 +43,21 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from db_services.mysql import (
+    get_shoe_all_information,
+    get_shoe_information_by_shoe_id,
+    get_shoe_information_by_shoe_id_from_inventory,
+)
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # ══════════════════════════════════════════════════════════════
 # 로거
@@ -64,13 +75,13 @@ logger = logging.getLogger("moosinsa_service")
 # ══════════════════════════════════════════════════════════════
 
 # ── M_LLM 서버 (TCP) ─────────────────────────────────────────
-MLLM_HOST = "192.168.1.120"
-MLLM_PORT = 9000
+# MLLM_HOST = "192.168.1.120"                       #.env로 이동 
+# MLLM_PORT = 9000
 
 # ── YOLO 서버 (UDP 송신) ──────────────────────────────────────
 # moosinsa_service → UDP → YOLO 서버 (tcp_main_ai.py)
-YOLO_SERVER_IP   = "192.168.1.120"
-YOLO_SERVER_PORT = 6006         # tcp_main_ai.py 의 LISTEN_PORT 와 일치
+# YOLO_SERVER_IP   = "192.168.1.120"                #.env로 이동 
+# YOLO_SERVER_PORT = 6006         # tcp_main_ai.py 의 LISTEN_PORT 와 일치
 
 # ── YOLO 결과 수신 서버 (TCP 수신) ────────────────────────────
 # YOLO 서버 → TCP → moosinsa_service
@@ -86,8 +97,8 @@ YOLO_CHUNK_SIZE    = 60000      # UDP 패킷당 최대 페이로드 크기 (byte
 # ── PySide6 관제 UI 포워딩 (YOLO 결과 미러링) ─────────────────
 # YOLOResultServer 가 결과를 수신하면 이 주소로도 동일 결과를 전달한다.
 # PySide6 GUI 의 TCP 수신 포트와 일치시킬 것.
-CAM_UI_IP   = "192.168.1.120"
-CAM_UI_PORT = 8009
+# CAM_UI_IP   = "192.168.1.120"                     #.env로 이동 
+# CAM_UI_PORT = 8009
 
 # TODO: 컴포넌트 추가 시 HOST/PORT 상수 여기에 추가
 # DB_HOST  = "localhost"
