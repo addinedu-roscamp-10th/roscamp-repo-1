@@ -40,6 +40,7 @@ import threading
 import uvicorn
 from contextlib import asynccontextmanager
 from typing import Optional
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -48,7 +49,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from db_services.mysql import (
+from db.mysql import (
     get_shoe_all_information,
     get_shoe_information_by_shoe_id,
     get_shoe_information_by_shoe_id_from_inventory,
@@ -689,11 +690,14 @@ async def lifespan(app: FastAPI):
     logger.info("Moosinsa Service 시작...")
 
     # M_LLM 클라이언트 초기화
-    llm_client = MLLMClient(host=MLLM_HOST, port=MLLM_PORT)
+    # llm_client = MLLMClient(host=MLLM_HOST, port=MLLM_PORT)
+    llm_client = MLLMClient(os.getenv("MLLM_HOST") , os.getenv("MLLM_PORT"))
     if await llm_client.health_check():
-        logger.info(f"M_LLM 연결 확인: {MLLM_HOST}:{MLLM_PORT}")
+        # logger.info(f"M_LLM 연결 확인: {MLLM_HOST}:{MLLM_PORT}")
+        logger.info("Moosinsa Service 시작 완료 - M_LLM 연결 가능")
     else:
-        logger.warning(f"M_LLM 응답 없음 ({MLLM_HOST}:{MLLM_PORT}) - 요청 시 재시도")
+        # logger.warning(f"M_LLM 응답 없음 ({MLLM_HOST}:{MLLM_PORT}) - 요청 시 재시도")
+        logger.warning("Moosinsa Service 시작 완료 - M_LLM 연결 불가")
 
     # YOLO 결과 수신 서버 시작 (별도 데몬 스레드)
     yolo_result_server = YOLOResultServer(
@@ -704,8 +708,8 @@ async def lifespan(app: FastAPI):
 
     # YOLO 클라이언트 초기화
     yolo_client = YOLOClient(
-        server_ip=YOLO_SERVER_IP,
-        server_port=YOLO_SERVER_PORT,
+        server_ip = os.getenv("YOLO_SERVER_IP"),
+        server_port= os.getenv("YOLO_SERVER_PORT"),
         result_server=yolo_result_server,
     )
 
@@ -732,18 +736,33 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Moosinsa Service", lifespan=lifespan)
 
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=[
+#         "http://192.168.0.43:5173",
+#         "http://localhost:5173",
+#         "http://127.0.0.1:5173",
+#     ],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://192.168.0.43:5173",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],        # 모든 origin 허용
+    allow_credentials= False,   # *일 때는 False 필수
+    allow_methods=["*"],        # GET, POST 등 모두 허용
+    allow_headers=["*"],        # GET, POST 등 모두 허용
 )
 
+
+SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
+app.mount(
+    "/shoes_image",
+    StaticFiles(directory=str(SHOES_IMAGE_DIR)),
+    name="shoes_images",
+)
 
 def get_orchestrator() -> ScenarioOrchestrator:
     """오케스트레이터 의존성 주입 헬퍼. 초기화 전 요청 시 503 반환."""
@@ -778,30 +797,88 @@ async def endpoint_health():
     return {
         "status"          : "ok",
         "mllm_connected"  : mllm_ok,
-        "mllm_host"       : f"{MLLM_HOST}:{MLLM_PORT}",
+        "mllm_host"       : f"{os.getenv("MLLM_HOST")}:{os.getenv("MLLM_PORT")}",
         "yolo_result_port": YOLO_RESULT_LISTEN_PORT,
-        "yolo_server"     : f"{YOLO_SERVER_IP}:{YOLO_SERVER_PORT}",
+        "yolo_server"     : f"{os.getenv("YOLO_SERVER_IP")}:{os.getenv("YOLO_SERVER_PORT")}",
     }
 
 
-@app.post("/search", response_model=SearchResponse)
-async def endpoint_search(req: SearchRequest):
-    """
-    키워드 기반 상품 검색 엔드포인트.
-    ScenarioOrchestrator.run_search_pipeline() 을 실행한다.
+# @app.post("/search", response_model=SearchResponse)
+# async def endpoint_search(req: SearchRequest):
+#     """
+#     키워드 기반 상품 검색 엔드포인트.
+#     ScenarioOrchestrator.run_search_pipeline() 을 실행한다.
 
-    input : SearchRequest  { keyword, accumulated_tags }
-    output: SearchResponse { results, count, accumulated_tags, debug }
-    """
-    logger.info(
-        f"/search 수신 - keyword='{req.keyword}' "
-        f"accumulated_tags={req.accumulated_tags}"
-    )
-    result = await get_orchestrator().run_search_pipeline(req)
+#     input : SearchRequest  { keyword, accumulated_tags }
+#     output: SearchResponse { results, count, accumulated_tags, debug }
+#     """
+#     logger.info(
+#         f"/search 수신 - keyword='{req.keyword}' "
+#         f"accumulated_tags={req.accumulated_tags}"
+#     )
+#     result = await get_orchestrator().run_search_pipeline(req)
+#     if result is None:
+#         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
+#     return result
+
+@app.post("/search")
+async def endpoint_search(req: SearchRequest):
+    logger.info(f"/search 수신 - keyword='{req.keyword}'")
+    print("/search 수신 - keyword=", req)
+
+    result = await get_orchestrator().run_search_pipeline(req.keyword)
+
+    print("/search :", result)
+
     if result is None:
         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
+
     return result
 
+@app.post("/find_shoe")
+def find_shoe(
+    request: Request,
+    data: str = Query(..., description='예: {"shoe_id":"NK-AM97"}')
+):
+    try:
+        payload = json.loads(data)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="data가 올바른 JSON 형식이 아닙니다.")
+
+    shoe_id = payload.get("shoe_id")
+
+    if not shoe_id or not str(shoe_id).strip():
+        return get_shoe_all_information()
+
+    return get_shoe_information_by_shoe_id(shoe_id)
+
+
+@app.post("/find_shoe_information")
+def find_shoe_info(
+    request: Request,
+    data: str = Query(..., description='예: {"shoe_id":"NK-AM97"}')
+):
+    try:
+        payload = json.loads(data)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="data가 올바른 JSON 형식이 아닙니다.")
+
+    shoe_id = payload.get("shoe_id")
+    print("find_shoe_info ============================ :", shoe_id)
+
+    if not shoe_id or not str(shoe_id).strip():
+        raise HTTPException(status_code=400, detail="shoe_id가 없습니다.")
+
+    return get_shoe_information_by_shoe_id_from_inventory(shoe_id)
+
+
+@app.post("/tryon/request")
+async def endpoint_tryon_request(product_id: str):
+    return {
+        "success": True,
+        "message": "tryon request endpoint placeholder",
+        "product_id": product_id,
+    }
 
 # TODO: 시나리오 확장 시 엔드포인트 추가
 # @app.post("/tryon/request", response_model=TryonResponse)
