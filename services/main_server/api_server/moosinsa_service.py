@@ -759,7 +759,7 @@ app.add_middleware(
 
 SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
 app.mount(
-    "/shoes_image",
+    "/shoes_images",
     StaticFiles(directory=str(SHOES_IMAGE_DIR)),
     name="shoes_images",
 )
