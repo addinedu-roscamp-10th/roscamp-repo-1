@@ -2,10 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './ProductDetailPage.css';
 
-// type ProductColor = {
-//   name: string;
-//   value: string;
-// };
 
 type Product = {
   shoe_id: string;
@@ -30,8 +26,9 @@ type ShoeDetailInfo = {
 };
 
 const seats = [1, 2, 3, 4];
-// const API = `http://${window.location.hostname}:8000`;
-const API = `http://192.168.0.20:8000`;
+const API = import.meta.env.VITE_API_URL;
+
+console.log("API:", API );
 
 function getShoeId() {
   const params = new URLSearchParams(window.location.search);
@@ -78,7 +75,7 @@ export default function ProductDetailPage() {
       setLoading(false);
       return;
     }
-
+    console.log("use effect[] ================== shoe_id: ", id);
     const fetchProduct = async () => {
       try {
         
@@ -119,10 +116,11 @@ export default function ProductDetailPage() {
   }, []);
 
   useEffect(()=>{
-    console.log("use effect ================== product ");
+    
     if (!product?.shoe_id) return; // (product 아직 없을때 방지)
 
     const fetchInventory = async () => {
+      console.log("use effect[product] ================== shoe_id: ", product.shoe_id);
       try {
         const res = await fetch(
           `${API}/find_shoe_information?data=${encodeURIComponent(
