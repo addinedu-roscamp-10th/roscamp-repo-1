@@ -182,35 +182,85 @@ export default function ProductDetailPage() {
     };
   }, [isFindDialogOpen]);
 
-  const handleSizeClick = (size: number) => {
-    if (!selectedColor) return;
+  // const handleSizeClick = (size: number) => {
+  //   if (!selectedColor) return;
 
-    const matched = inventory.find(
-      (item) => item.size === size && item.color === selectedColor
-    );
+  //   const matched = inventory.find(
+  //     (item) => item.size === size && item.color === selectedColor
+  //   );
+
+  //   if (!matched) return;
+
+  //   setSelectedSize(size);
+
+  //   if (matched.image_url) {
+  //     setDisplayImage(`${API}${matched.image_url}`);
+  //   }
+  // };
+
+
+
+  // const handleColorClick = (color: string) => {
+  //   if (!selectedSize) return;
+
+  //   const matched = inventory.find(
+  //     (item) => item.color === color && item.size === selectedSize
+  //   );
+    
+  //   if (!matched) return;
+
+  //   setSelectedColor(color);
+
+  //   if (matched.image_url) {
+  //     setDisplayImage(`${API}${matched.image_url}`);
+  //   }
+  // };
+
+  const handleSizeClick = (size: number) => {
+    const matched = selectedColor
+      ? inventory.find((item) => item.size === size && item.color === selectedColor)
+      : inventory.find((item) => item.size === size);
 
     if (!matched) return;
 
     setSelectedSize(size);
+
+    if (!selectedColor) {
+      setSelectedColor(matched.color);
+    }
 
     if (matched.image_url) {
       setDisplayImage(`${API}${matched.image_url}`);
     }
   };
 
+  
   const handleColorClick = (color: string) => {
-    if (!selectedSize) return;
-
-    const matched = inventory.find(
-      (item) => item.color === color && item.size === selectedSize
-    );
-    
-    if (!matched) return;
-
     setSelectedColor(color);
 
-    if (matched.image_url) {
-      setDisplayImage(`${API}${matched.image_url}`);
+    const matchedWithCurrentSize =
+      selectedSize !== null
+        ? inventory.find((item) => item.color === color && item.size === selectedSize)
+        : null;
+
+    if (matchedWithCurrentSize) {
+      if (matchedWithCurrentSize.image_url) {
+        setDisplayImage(`${API}${matchedWithCurrentSize.image_url}`);
+      }
+      return;
+    }
+
+    const firstColorItem = inventory.find((item) => item.color === color);
+
+    if (!firstColorItem) {
+      setSelectedSize(null);
+      return;
+    }
+
+    setSelectedSize(null);
+
+    if (firstColorItem.image_url) {
+      setDisplayImage(`${API}${firstColorItem.image_url}`);
     }
   };
 
@@ -319,11 +369,15 @@ export default function ProductDetailPage() {
         }
 
         const data = await res.json();
-        console.log(data);
+        
+        // 여기 추가
+        const filteredData = data.filter((item: any) => {
+          return typeof item.shoe_id === 'string' && item.shoe_id.trim().length > 0;
+        });
       
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(filteredData) && filteredData.length > 0) {
           navigate('/search_result', {
-            state: { shoes: data },
+            state: { shoes: filteredData },
           });
           return;
         }
@@ -497,20 +551,18 @@ export default function ProductDetailPage() {
 
         <div className="section">
           <div className="section-title">사이즈 선택</div>
-
           <div className="size-list">
             {product?.sizes.map((size) => {
               const enabled = selectedColor
                 ? inventory.some(
                     (item) => item.size === size && item.color === selectedColor
                   )
-                : false;
+                : inventory.some((item) => item.size === size);
 
               return (
                 <button
                   key={size}
                   disabled={!enabled}
-                  // className={selectedSize === size ? 'selected' : ''}
                   className={`size-btn ${selectedSize === size ? 'selected' : ''}`}
                   onClick={() => handleSizeClick(size)}
                 >
@@ -525,11 +577,7 @@ export default function ProductDetailPage() {
           <div className="section-title">색상 선택</div>
           <div className="color-list">
             {product?.colors.map((color) => {
-              const enabled = selectedSize
-                ? inventory.some(
-                    (item) => item.color === color && item.size === selectedSize
-                  )
-                : false;
+              const enabled = inventory.some((item) => item.color === color);
 
               return (
                 <button
