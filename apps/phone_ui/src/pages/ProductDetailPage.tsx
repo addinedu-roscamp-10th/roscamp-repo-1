@@ -27,7 +27,7 @@ type ShoeDetailInfo = {
 
 const seats = [1, 2, 3, 4];
 const API = import.meta.env.VITE_API_URL;
-
+//확인용 
 console.log("API:", API );
 
 function getShoeId() {
