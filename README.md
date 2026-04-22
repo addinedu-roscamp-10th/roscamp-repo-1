@@ -87,7 +87,7 @@ git commit -m "Feat: 시착 요청 API 엔드포인트 추가"
 
 ---
 
-### 4단계 — 작업 완료 후 push 및 branch 삭제
+### 4단계 — 작업 완료 후 push
 
 ```bash
 # 내 feature 브랜치 push
@@ -99,12 +99,8 @@ git push origin feature/daejaehun-api-tryon
 # push하면 GitHub Actions가 자동으로 develop에 merge해줌
 # 1. feature 브랜치 push 후 Actions 탭에서 초록 체크 확인
 # 2. 빨간 X 뜨면 클릭해서 에러 확인 후 팀장한테 공유
+```
 
-# 원격 브랜치 삭제
-git push origin --delete feature/daejaehun-api-tryon
-
-# 로컬 브랜치 삭제
-git branch -d feature/daejaehun-api-tryon
 ---
 
 ### 5단계 — 다음 작업 시작할 때
