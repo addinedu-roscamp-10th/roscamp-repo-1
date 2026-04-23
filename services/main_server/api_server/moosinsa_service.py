@@ -31,6 +31,9 @@ Role      : 시스템 중앙 백엔드 서버 (FastAPI).
 실행: python moosinsa_service.py
 """
 
+import sys, os
+sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
+
 import asyncio
 import json
 import logging
@@ -48,6 +51,7 @@ from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from fms.robot_manager import fleet
 
 from db.mysql import (
     get_shoe_all_information,
@@ -81,8 +85,8 @@ logger = logging.getLogger("moosinsa_service")
 
 # ── YOLO 서버 (UDP 송신) ──────────────────────────────────────
 # moosinsa_service → UDP → YOLO 서버 (tcp_main_ai.py)
-# YOLO_SERVER_IP   = "192.168.1.120"                #.env로 이동 
-# YOLO_SERVER_PORT = 6006         # tcp_main_ai.py 의 LISTEN_PORT 와 일치
+YOLO_SERVER_IP   = "192.168.1.120"                #.env로 이동 
+YOLO_SERVER_PORT = 6006         # tcp_main_ai.py 의 LISTEN_PORT 와 일치
 
 # ── YOLO 결과 수신 서버 (TCP 수신) ────────────────────────────
 # YOLO 서버 → TCP → moosinsa_service
@@ -732,13 +736,33 @@ async def lifespan(app: FastAPI):
     #     cam_client  = TopViewCamClient(...),
     # )
 
+    # ── fleet 초기화 추가 ──────────────────────────────
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, fleet.connect_all)
+    fleet.start_reconnect_loop()
+    logger.info("Robot fleet 초기화 완료")
+    # ──────────────────────────────────────────────────
+
     logger.info("Moosinsa Service 준비 완료")
     yield
+
+    fleet.close_all()          # ← 종료 시 추가
     logger.info("Moosinsa Service 종료")
 
 
 app = FastAPI(title="Moosinsa Service", lifespan=lifespan)
 
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=[
+#         "http://192.168.0.43:5173",
+#         "http://localhost:5173",
+#         "http://127.0.0.1:5173",
+#     ],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 app.add_middleware(
     CORSMiddleware,
@@ -749,12 +773,12 @@ app.add_middleware(
 )
 
 
-SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
-app.mount(
-    "/shoes_images",
-    StaticFiles(directory=str(SHOES_IMAGE_DIR)),
-    name="shoes_images",
-)
+# SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
+# app.mount(
+#     "/shoes_image",
+#     StaticFiles(directory=str(SHOES_IMAGE_DIR)),
+#     name="shoes_images",
+# )
 
 def get_orchestrator() -> ScenarioOrchestrator:
     """오케스트레이터 의존성 주입 헬퍼. 초기화 전 요청 시 503 반환."""
@@ -872,13 +896,20 @@ def find_shoe_info(
     return get_shoe_information_by_shoe_id_from_inventory(shoe_id)
 
 
+# @app.post("/tryon/request")
+# async def endpoint_tryon_request(product_id: str):
+#     return {
+#         "success": True,
+#         "message": "tryon request endpoint placeholder",
+#         "product_id": product_id,
+#     }
 @app.post("/tryon/request")
-async def endpoint_tryon_request(product_id: str):
-    return {
-        "success": True,
-        "message": "tryon request endpoint placeholder",
-        "product_id": product_id,
-    }
+async def endpoint_tryon_request(product_id: str, robot_id: str = "sshopy1"):
+    ok = fleet.start_delivery(robot_id)
+    if not ok:
+        raise HTTPException(status_code=503, detail=f"{robot_id} 연결 안 됨")
+    logger.info(f"[tryon/request] 배달 시작 → robot={robot_id} product={product_id}")
+    return {"success": True, "robot_id": robot_id, "product_id": product_id}
 
 # TODO: 시나리오 확장 시 엔드포인트 추가
 # @app.post("/tryon/request", response_model=TryonResponse)
