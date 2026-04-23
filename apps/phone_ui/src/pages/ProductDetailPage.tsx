@@ -75,7 +75,7 @@ export default function ProductDetailPage() {
       setLoading(false);
       return;
     }
-    console.log("use effect[] ================== shoe_id: ", id);
+
     const fetchProduct = async () => {
       try {
         
@@ -147,11 +147,6 @@ export default function ProductDetailPage() {
           if (first.image_url) {
             setDisplayImage(`${API}${first.image_url}`);
           }
-
-          console.log('product image_url:', data.image_url);
-          console.log('inventory first:', first);
-          console.log('inventory first image url:', `${API}${first.image_url}`);
-
         }
       } catch (e) {
         console.error(e);
@@ -183,34 +178,50 @@ export default function ProductDetailPage() {
   }, [isFindDialogOpen]);
 
   const handleSizeClick = (size: number) => {
-    if (!selectedColor) return;
-
-    const matched = inventory.find(
-      (item) => item.size === size && item.color === selectedColor
-    );
+    const matched = selectedColor
+      ? inventory.find((item) => item.size === size && item.color === selectedColor)
+      : inventory.find((item) => item.size === size);
 
     if (!matched) return;
 
     setSelectedSize(size);
+
+    if (!selectedColor) {
+      setSelectedColor(matched.color);
+    }
 
     if (matched.image_url) {
       setDisplayImage(`${API}${matched.image_url}`);
     }
   };
 
+  
   const handleColorClick = (color: string) => {
-    if (!selectedSize) return;
-
-    const matched = inventory.find(
-      (item) => item.color === color && item.size === selectedSize
-    );
-    
-    if (!matched) return;
-
     setSelectedColor(color);
 
-    if (matched.image_url) {
-      setDisplayImage(`${API}${matched.image_url}`);
+    const matchedWithCurrentSize =
+      selectedSize !== null
+        ? inventory.find((item) => item.color === color && item.size === selectedSize)
+        : null;
+
+    if (matchedWithCurrentSize) {
+      if (matchedWithCurrentSize.image_url) {
+        setDisplayImage(`${API}${matchedWithCurrentSize.image_url}`);
+      }
+      return;
+    }
+
+    const firstColorItem = inventory.find((item) => item.color === color);
+
+    if (!firstColorItem) {
+      setSelectedSize(null);
+      return;
+    }
+
+    setSelectedSize(null);
+
+    if (firstColorItem.image_url) {
+      setDisplayImage(`${API}${firstColorItem.image_url}`);
     }
   };
 
@@ -319,11 +330,15 @@ export default function ProductDetailPage() {
         }
 
         const data = await res.json();
-        console.log(data);
+        
+        // 여기 추가
+        const filteredData = data.filter((item: any) => {
+          return typeof item.shoe_id === 'string' && item.shoe_id.trim().length > 0;
+        });
       
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(filteredData) && filteredData.length > 0) {
           navigate('/search_result', {
-            state: { shoes: data },
+            state: { shoes: filteredData },
           });
           return;
         }
@@ -343,9 +358,6 @@ export default function ProductDetailPage() {
       setIsFindDialogOpen(false);
       return;
     }
-
-    console.log('handleSearchRequest --------------------');
-
     try {
       setFindLoading(true);
       setMsg('');
@@ -360,18 +372,33 @@ export default function ProductDetailPage() {
         }),
       });
 
+      const text = await res.text();
+      console.log("handleSearchRequest response text:", text);
 
       if (!res.ok) {
-        const text = await res.text();
         throw new Error(`검색 실패 (${res.status}) ${text}`);
       }
 
-      const data = await res.json();
+      const data = JSON.parse(text);
       console.log('find shoe response:', data);
 
-      // 배열이면 → 검색 결과 리스트 페이지
+      // 1) m_llm 응답 형식: { results: [...], count: n, debug: {...} }
+      if (Array.isArray(data.results)) {
+        if (data.results.length === 0) {
+          setMsg('검색 결과가 없습니다.');
+          return;
+        }
+
+        navigate('/search_result', {
+          state: { shoes: data.results },
+        });
+        setIsFindDialogOpen(false);
+        setFindInput('');
+        return;
+      }
+
+      // 2) 기존 배열 응답도 대응
       if (Array.isArray(data)) {
-      console.log("================== array");
         if (data.length === 0) {
           setMsg('검색 결과가 없습니다.');
           return;
@@ -380,11 +407,13 @@ export default function ProductDetailPage() {
         navigate('/search_result', {
           state: { shoes: data },
         });
+        setIsFindDialogOpen(false);
+        setFindInput('');
         return;
       }
 
+
       // 객체이면 → 상세 페이지로
-      console.log("================== object" , data);
       const parsedSizes = typeof data.sizes === 'string' ? JSON.parse(data.sizes) : data.sizes;
       const parsedColors = typeof data.colors === 'string' ? JSON.parse(data.colors) : data.colors;        
       setDisplayImage(`${API}${data.image_url}`);
@@ -396,12 +425,6 @@ export default function ProductDetailPage() {
           colors: parsedColors,
       });
 
-      // navigate('/product_detail', {
-      //   state: { product: data },
-      // });
-
-
-      // setMsg(`키워드 검색 요청 완료: ${data.model ?? data.shoe_id ?? findInput}`);
       setIsFindDialogOpen(false);
       setFindInput('');
     } catch (error) {
@@ -497,20 +520,18 @@ export default function ProductDetailPage() {
 
         <div className="section">
           <div className="section-title">사이즈 선택</div>
-
           <div className="size-list">
             {product?.sizes.map((size) => {
               const enabled = selectedColor
                 ? inventory.some(
                     (item) => item.size === size && item.color === selectedColor
                   )
-                : false;
+                : inventory.some((item) => item.size === size);
 
               return (
                 <button
                   key={size}
                   disabled={!enabled}
-                  // className={selectedSize === size ? 'selected' : ''}
                   className={`size-btn ${selectedSize === size ? 'selected' : ''}`}
                   onClick={() => handleSizeClick(size)}
                 >
@@ -525,11 +546,7 @@ export default function ProductDetailPage() {
           <div className="section-title">색상 선택</div>
           <div className="color-list">
             {product?.colors.map((color) => {
-              const enabled = selectedSize
-                ? inventory.some(
-                    (item) => item.color === color && item.size === selectedSize
-                  )
-                : false;
+              const enabled = inventory.some((item) => item.color === color);
 
               return (
                 <button
