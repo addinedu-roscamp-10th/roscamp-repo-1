@@ -736,17 +736,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Moosinsa Service", lifespan=lifespan)
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=[
-#         "http://192.168.0.43:5173",
-#         "http://localhost:5173",
-#         "http://127.0.0.1:5173",
-#     ],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
 
 app.add_middleware(
     CORSMiddleware,
@@ -826,7 +815,8 @@ async def endpoint_search(req: SearchRequest):
     logger.info(f"/search 수신 - keyword='{req.keyword}'")
     print("/search 수신 - keyword=", req)
 
-    result = await get_orchestrator().run_search_pipeline(req.keyword)
+    # result = await get_orchestrator().run_search_pipeline(req.keyword)
+    result = await get_orchestrator().run_search_pipeline(req)
 
     print("/search :", result)
 
