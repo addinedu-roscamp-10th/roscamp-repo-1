@@ -165,4 +165,26 @@
   .shoe-result-name {
     font-size: 22px;
   }
+
+  .search-page-topbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 14px;
+}
+
+  .search-back-button {
+    border: none;
+    background: #f3f4f6;
+    color: #111827;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .search-back-button:hover {
+    background: #e5e7eb;
+  }
 }
