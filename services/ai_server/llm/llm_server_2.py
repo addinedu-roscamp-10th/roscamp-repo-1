@@ -6,6 +6,7 @@ import difflib
 import pymysql
 import random
 
+
 # ── MySQL 접속 설정 ──
 DB_CONFIG = {
     "host": "192.168.1.120",
