@@ -102,8 +102,8 @@ YOLO_CHUNK_SIZE    = 60000      # UDP 패킷당 최대 페이로드 크기 (byte
 # ── PySide6 관제 UI 포워딩 (YOLO 결과 미러링) ─────────────────
 # YOLOResultServer 가 결과를 수신하면 이 주소로도 동일 결과를 전달한다.
 # PySide6 GUI 의 TCP 수신 포트와 일치시킬 것.
-# CAM_UI_IP   = "192.168.1.120"                     #.env로 이동 
-# CAM_UI_PORT = 8009
+CAM_UI_IP   = "192.168.1.11"                     #.env로 이동 
+CAM_UI_PORT = 8009
 
 # TODO: 컴포넌트 추가 시 HOST/PORT 상수 여기에 추가
 # DB_HOST  = "localhost"
@@ -427,6 +427,7 @@ class YOLOResultServer:
                 return None
             buf += chunk
         return buf
+    
 
 
 class YOLOClient:
@@ -523,7 +524,50 @@ class YOLOClient:
 
 
 # ══════════════════════════════════════════════════════════════
-# [5] Moosinsa Service ↔ MSS DB (MySQL)
+# [5] Moosinsa Service ↔ Top View Camera(TVC) 서버
+#
+#
+#
+# ══════════════════════════════════════════════════════════════
+
+class CameraUDPServer:
+    def __init__(self, listen_ip="192.168.1.9", listen_port=7007):
+        self.listen_ip = listen_ip
+        self.listen_port = listen_port
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+        logger.info(f"CameraUDPServer 시작: {self.listen_ip}:{self.listen_port}")
+
+    def _run(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((self.listen_ip, self.listen_port))
+
+        while True:
+            try:
+                data, addr = sock.recvfrom(65535)
+
+                logger.info(f"[UDP RECV] from={addr}, bytes={len(data)}")
+
+                # 그대로 GUI로 forward
+                self._forward_to_cam_ui(data)
+
+            except Exception as e:
+                logger.error(f"CameraUDPServer error: {e}")
+
+    def _forward_to_cam_ui(self, raw_data: bytes):
+        try:
+            fwd_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            fwd_sock.connect((CAM_UI_IP, CAM_UI_PORT))
+            fwd_sock.sendall(struct.pack("!I", len(raw_data)) + raw_data)
+            fwd_sock.close()
+        except Exception as e:
+            logger.warning(f"Camera UI forward 실패: {e}")
+
+
+# ══════════════════════════════════════════════════════════════
+# [6]] Moosinsa Service ↔ MSS DB (MySQL)
 #     TODO: DBClient 구현 시 이 섹션에 추가
 # ══════════════════════════════════════════════════════════════
 
@@ -544,7 +588,7 @@ class YOLOClient:
 
 
 # ══════════════════════════════════════════════════════════════
-# [6] Moosinsa Service ↔ 로봇 (ROS2)
+# [7] Moosinsa Service ↔ 로봇 (ROS2)
 #     TODO: ROS2 클라이언트 구현 시 이 섹션에 추가
 # ══════════════════════════════════════════════════════════════
 
@@ -719,6 +763,13 @@ async def lifespan(app: FastAPI):
         server_port= os.getenv("YOLO_SERVER_PORT"),
         result_server=yolo_result_server,
     )
+
+    # Top View Camera 데이터 수신 서버
+    camera_udp_server = CameraUDPServer(
+        listen_ip="0.0.0.0",
+        listen_port=7007
+    )
+    camera_udp_server.start()
 
     # ScenarioOrchestrator 조립
     _orchestrator = ScenarioOrchestrator(
