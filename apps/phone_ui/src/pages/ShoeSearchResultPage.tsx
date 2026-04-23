@@ -13,13 +13,10 @@ type ShoeItem = {
   tags?: string;
 };
 
-const API = `http://192.168.0.7:8000`;
+const API = import.meta.env.VITE_API_URL;
 
 
-// const location = useLocation();
-// const shoes = location.state?.shoes || [];
 
-// console.log('search result shoes:', shoes);
 
 function parseSizes(value: ShoeItem['sizes']): string[] {
   if (Array.isArray(value)) {
@@ -58,12 +55,22 @@ function parseColors(value: ShoeItem['colors']): string[] {
 export default function ShoeSearchResultPage() {
   const location = useLocation();
   const navigate = useNavigate();
-
   const shoes: ShoeItem[] = location.state?.shoes ?? [];
 
   return (
     <div className="search-page-container">
       <div className="search-main-card">
+        <div className="search-page-topbar">
+          <button
+            type="button"
+            className="search-back-button"
+            onClick={() => navigate(-1)}
+          >
+            ← 뒤로가기
+          </button>
+        </div>
+
+
         <div className="search-page-title">전체 신발 보기</div>
         <div className="search-page-sub">총 {shoes.length}개의 상품</div>
 
