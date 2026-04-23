@@ -214,17 +214,59 @@ export default function ProductDetailPage() {
     }
   };
 
+  // const handleTryOnRequest = async () => {
+  //   try {
+  //     const tryOnRes = await fetch(`${API}/try-on-request`, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({
+  //         model: product?.model,
+  //         robot_name: 'shoppy1',
+  //       }),
+  //     });
+
+  //     const tryOnData = await tryOnRes.json();
+  //     console.log('try-on:', tryOnData);
+
+  //     if (!tryOnData.success) {
+  //       alert('시착 요청 접수 실패');
+  //       return;
+  //     }
+
+  //     const robotRes = await fetch(`${API}/robot/forward`, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({
+  //         robot_name: 'shoppy1',
+  //         speed: 0.2,
+  //         duration: 1.0,
+  //       }),
+  //     });
+
+  //     const robotData = await robotRes.json();
+
+  //     if (robotData.success) {
+  //       setMsg(
+  //         `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${
+  //           selectedColor ?? '-'
+  //         } / 좌석 ${seat}`
+  //       );
+  //     } else {
+  //       setMsg('시착 요청은 되었지만 로봇 이동 실패');
+  //     }
+  //   } catch (error) {
+  //     console.error(error);
+  //     setMsg('요청 중 오류 발생');
+  //   }
+  // };
   const handleTryOnRequest = async () => {
     try {
-      const tryOnRes = await fetch(`${API}/try-on-request`, {
+      const tryOnRes = await fetch(`${API}/tryon/request?product_id=${product?.shoe_id}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: product?.model,
-          robot_name: 'shoppy1',
-        }),
       });
 
       const tryOnData = await tryOnRes.json();
@@ -235,29 +277,10 @@ export default function ProductDetailPage() {
         return;
       }
 
-      const robotRes = await fetch(`${API}/robot/forward`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          robot_name: 'shoppy1',
-          speed: 0.2,
-          duration: 1.0,
-        }),
-      });
+      setMsg(
+        `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${selectedColor ?? '-'} / 좌석 ${seat}`
+      );
 
-      const robotData = await robotRes.json();
-
-      if (robotData.success) {
-        setMsg(
-          `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${
-            selectedColor ?? '-'
-          } / 좌석 ${seat}`
-        );
-      } else {
-        setMsg('시착 요청은 되었지만 로봇 이동 실패');
-      }
     } catch (error) {
       console.error(error);
       setMsg('요청 중 오류 발생');
