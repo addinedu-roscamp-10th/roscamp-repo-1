@@ -1,0 +1,7 @@
+image: /home/pinky/pinky_pro/src/pinky_pro/pinky_navigation/maps/mapgood.pgm
+mode: trinary
+resolution: 0.020
+origin: [-0.203, -0.209, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

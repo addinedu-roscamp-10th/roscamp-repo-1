@@ -1,9 +1,0 @@
-# ★ 실제 keepout_mask.pgm 파일은 핑키에서 복사 필요
-# scp pinky@192.168.1.112:~/pinky_pro/src/pinky_pro/pinky_navigation/maps/keepout_mask.pgm ./
-image: keepout_mask.pgm
-mode: scale
-resolution: 0.02
-origin: [0.0, 0.0, 0.0]
-negate: 0
-occupied_thresh: 0.65
-free_thresh: 0.25

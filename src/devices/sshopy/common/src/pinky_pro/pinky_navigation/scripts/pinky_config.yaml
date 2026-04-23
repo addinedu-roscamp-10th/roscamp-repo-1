@@ -1,0 +1,351 @@
+# ============================================================
+# Pinky Configuration - 매장 Waypoint & 시나리오 정의
+# ============================================================
+# 좌표값은 nav2_web_server에서 실측 후 업데이트 필요
+# orientation은 quaternion (z, w) 형태
+# ============================================================
+
+# ----------------------------------------------------------
+# 1. 매장 Waypoint 좌표
+# ----------------------------------------------------------
+locations:
+  # --- 로봇 기본 위치 (상시 대기) ---
+  home:
+    x: 0.964
+    y: -0.005
+    z: 0.348
+    w: 0.937
+    description: "핑키 대기 위치 (입고/회수 완료 후 복귀, 상시 대기)"
+
+  # --- 창고 영역 ---
+  warejet:
+    x: 0.10835881471111715
+    y: 0.21389932731805447
+    z: 0.9998012815964794
+    w: 0.019934826762158426
+    description: "창고 WareJet 앞 (상품 인수/인계 위치)"
+
+  # --- 입고 영역 ---
+  frontjet:
+    x: 1.055
+    y: 0.313
+    z: -0.730
+    w: 0.683
+    description: "입고존 FrontJet 앞 (상품 수령 위치)"
+
+  # --- 시착 구역 (4개 존, 좌석 방향 바라봄) ---
+  tryzone_1:
+    x: 1.331
+    y: 0.074
+    z: 0.700
+    w: 0.714
+    description: "시착 구역 1번"
+
+  tryzone_2:
+    x: 1.579
+    y: 0.260
+    z: 1.000
+    w: -0.001
+    description: "시착 구역 2번"
+
+  tryzone_3:
+    x: 1.299
+    y: 0.565
+    z: -0.730
+    w: 0.684
+    description: "시착 구역 3번"
+
+  tryzone_4:
+    x: 1.135
+    y: 0.375
+    z: -0.022
+    w: 1.000
+    description: "시착 구역 4번"
+
+  # --- 회수 허브 ---
+  retrieve_hub:
+    x: 1.055
+    y: 0.313
+    z: -0.730
+    w: 0.683
+    description: "회수 허브 (반납 상품 수거 위치)"
+
+  # --- 충전 스테이션 ---
+  charging_station:
+    x: 0.390
+    y: 0.647
+    z: -0.719
+    w: 0.695
+    description: "충전 스테이션 (배터리 부족 시 자동 복귀)"
+
+
+# ----------------------------------------------------------
+# 2. 핑키 상태 정의
+# ----------------------------------------------------------
+states:
+  - IDLE           # 대기 (순찰 포함)
+  - ASSIGNED       # 작업 할당됨 (아직 미출발)
+  - NAVIGATING     # 목적지로 이동 중
+  - ARRIVED        # 목적지 도착
+  - WAITING_LOAD   # 적재/하역 대기 중
+  - LOADED         # 적재 완료
+  - DELIVERING     # 고객에게 배달 중
+  - WAITING_PICKUP # 고객 수령 대기
+  - RETURNING      # 대기 위치로 복귀 중
+  - CHARGING       # 충전 중
+  - ERROR          # 오류 상태
+
+
+# ----------------------------------------------------------
+# 3. 시나리오 정의
+# ----------------------------------------------------------
+# 각 시나리오의 step은 순차 실행됨
+# action 종류:
+#   navigate   → 해당 location으로 이동
+#   wait_signal → 특정 토픽 신호 대기
+#   publish    → 특정 토픽에 신호 발행
+#   wait_timer → N초 대기
+# ----------------------------------------------------------
+
+scenarios:
+  # =========================================================
+  # 시나리오 1: 입고 (Inbound)
+  # 입고존에서 상품 수령 → 창고로 운반
+  # =========================================================
+  inbound:
+    description: "입고 - 상품을 입고존에서 받아 창고로 운반"
+    steps:
+      - name: "입고존 이동"
+        action: navigate
+        target: frontjet
+        next_state: NAVIGATING
+
+      - name: "입고존 도착 알림"
+        action: publish
+        topic: /pinky/arrived
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: ARRIVED
+
+      - name: "적재 완료 대기"
+        action: wait_signal
+        topic: /load_complete
+        msg_type: std_msgs/Bool
+        timeout: 120  # 초
+        next_state: WAITING_LOAD
+
+      - name: "창고로 이동"
+        action: navigate
+        target: warejet
+        next_state: DELIVERING
+
+      - name: "하역 완료 대기"
+        action: wait_signal
+        topic: /unload_complete
+        msg_type: std_msgs/Bool
+        timeout: 120
+        next_state: WAITING_LOAD
+
+      - name: "대기 위치 복귀"
+        action: navigate
+        target: home
+        next_state: RETURNING
+
+      - name: "작업 완료 보고"
+        action: publish
+        topic: /task_complete
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: IDLE
+  # 창고에서 상품 수령 → 시착존 고객에게 배달
+  # =========================================================
+  purchase:
+    description: "신발 구매 - 창고에서 상품을 받아 시착존 고객에게 전달"
+    params:
+      - tryzone_id      # 동적: 어떤 시착존으로 갈지 (tryzone_1~4)
+    steps:
+      - name: "창고 이동 (상품 수령)"
+        action: navigate
+        target: warejet
+        next_state: NAVIGATING
+
+      - name: "창고 도착 알림"
+        action: publish
+        topic: /pinky/arrived
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: ARRIVED
+
+      - name: "적재 완료 대기"
+        action: wait_signal
+        topic: /load_complete
+        msg_type: std_msgs/Bool
+        timeout: 120
+        next_state: WAITING_LOAD
+
+      - name: "시착존 이동 (고객 배달)"
+        action: navigate
+        target: "$tryzone_id"   # 동적 파라미터 참조
+        next_state: DELIVERING
+
+      - name: "시착존 도착 알림"
+        action: publish
+        topic: /pinky/arrived
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: ARRIVED
+
+      - name: "고객 수령 대기"
+        action: wait_signal
+        topic: /customer_pickup
+        msg_type: std_msgs/Bool
+        timeout: 180  # 3분
+        next_state: WAITING_PICKUP
+
+      - name: "대기 위치 복귀"
+        action: navigate
+        target: home
+        next_state: RETURNING
+
+      - name: "작업 완료 보고"
+        action: publish
+        topic: /task_complete
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: IDLE
+
+  # =========================================================
+  # 시나리오 3: 고객 안내 (Customer Assist)
+  # 고객 호출 위치로 이동 → LCD 안내 → 복귀
+  # =========================================================
+  assist:
+    description: "고객 안내 - 호출된 위치로 이동하여 LCD 안내 제공"
+    params:
+      - customer_location   # 동적: 고객이 있는 위치
+    steps:
+      - name: "고객 위치 이동"
+        action: navigate
+        target: "$customer_location"
+        next_state: NAVIGATING
+
+      - name: "도착 알림"
+        action: publish
+        topic: /pinky/arrived
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: ARRIVED
+
+      - name: "안내 종료 대기"
+        action: wait_signal
+        topic: /assist_complete
+        msg_type: std_msgs/Bool
+        timeout: 300  # 5분
+        next_state: WAITING_PICKUP
+
+      - name: "대기 위치 복귀"
+        action: navigate
+        target: home
+        next_state: RETURNING
+
+      - name: "작업 완료 보고"
+        action: publish
+        topic: /task_complete
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: IDLE
+
+  # =========================================================
+  # 시나리오 4: 회수 (Retrieve)
+  # 회수 허브에서 반납 상품 수거 → 창고 반납
+  # =========================================================
+  retrieve:
+    description: "회수 - 반납 상품을 회수 허브에서 수거하여 창고로 반환"
+    steps:
+      - name: "회수 허브 이동"
+        action: navigate
+        target: retrieve_hub
+        next_state: NAVIGATING
+
+      - name: "회수 허브 도착 알림"
+        action: publish
+        topic: /pinky/arrived
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: ARRIVED
+
+      - name: "적재 완료 대기 (FrontJet → 핑키)"
+        action: wait_signal
+        topic: /load_complete
+        msg_type: std_msgs/Bool
+        timeout: 120
+        next_state: WAITING_LOAD
+
+      - name: "창고 이동 (반납)"
+        action: navigate
+        target: warejet
+        next_state: DELIVERING
+
+      - name: "하역 완료 대기 (핑키 → WareJet)"
+        action: wait_signal
+        topic: /unload_complete
+        msg_type: std_msgs/Bool
+        timeout: 120
+        next_state: WAITING_LOAD
+
+      - name: "대기 위치 복귀"
+        action: navigate
+        target: home
+        next_state: RETURNING
+
+      - name: "작업 완료 보고"
+        action: publish
+        topic: /task_complete
+        msg_type: std_msgs/Bool
+        value: true
+        next_state: IDLE
+
+
+# ----------------------------------------------------------
+# 4. 배터리 설정
+# ----------------------------------------------------------
+# battery_publisher.py에서 battery/percent (Float32) 토픽 구독
+# pinky_battery.py 기준: full=7.6V(100%), empty=6.8V(0%)
+# ----------------------------------------------------------
+battery:
+  min_for_task: 20.0       # 태스크 수락 최소 배터리 (%)
+  critical_level: 10.0     # 긴급 충전 임계값 (%) - 즉시 충전소 복귀
+  full_level: 95.0         # 충전 완료 기준 (%) - 이 이상이면 IDLE 복귀
+  charging_station: "charging_station"   # 충전 시 이동할 위치 (locations 키)
+  # 동작 흐름:
+  #   1. battery/percent ≤ critical_level → 작업 완료 후 충전소 자동 복귀
+  #   2. battery/percent ≤ min_for_task → 새 태스크 거부 + 충전 필요 플래그
+  #   3. battery/percent ≥ full_level → 충전 완료, IDLE 복귀
+
+
+# ----------------------------------------------------------
+# 5. 타임아웃 & 리트라이 설정
+# ----------------------------------------------------------
+timeouts:
+  navigation_timeout: 60      # 네비게이션 최대 대기 시간 (초)
+  signal_default_timeout: 120  # 신호 대기 기본 타임아웃 (초)
+  retry_count: 3               # 네비게이션 실패 시 재시도 횟수
+  retry_delay: 5               # 재시도 간격 (초)
+
+# ----------------------------------------------------------
+# 6. ROS2 인터페이스 정의
+# ----------------------------------------------------------
+ros_interfaces:
+  # FMS → 핑키 (명령 수신)
+  task_action_server: "/sshopy/task"          # Action: 시나리오 실행 명령
+  
+  # 핑키 → FMS (상태 보고)  
+  status_topic: "/pinky/status"               # Topic: 현재 상태 발행
+  status_publish_rate: 1.0                     # 초 단위
+
+  # 핑키 내부 Nav2
+  nav2_action: "navigate_to_pose"             # Nav2 이동 액션
+  
+  # 기존 호환 (robot_nodes.py)
+  arrived_topic: "/pinky/arrived"
+  load_complete_topic: "/load_complete"
+  set_idle_topic: "/set_idle"
