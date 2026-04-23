@@ -47,7 +47,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from db.mysql import (
     get_shoe_all_information,
@@ -113,16 +113,17 @@ YOLO_CHUNK_SIZE    = 60000      # UDP 패킷당 최대 페이로드 크기 (byte
 
 class SearchRequest(BaseModel):
     """React 또는 PySide6 → /search 요청 본문"""
-    keyword: str
-    accumulated_tags: dict = {}     # 누적 태그; 첫 요청은 빈 dict
+    keyword: str   
+    accumulated_tags: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ShoeItem(BaseModel):
     """M_LLM 이 반환하는 개별 상품 정보"""
     id: Optional[int] = None
+    shoe_id: str = ""
     brand: str = ""
     model: str = ""
-    colors: str = ""
+    colors: list[str] = Field(default_factory=list)
     price: int = 0
     image_url: str = ""
     tags: str = ""
@@ -640,6 +641,7 @@ class ScenarioOrchestrator:
                 user_text=req.keyword,
                 accumulated_tags=req.accumulated_tags,
             )
+            
             if result is None:
                 self._log_step_failure("STEP3_MLLM_FILTER", "필터링 결과 없음")
                 return None
@@ -660,6 +662,7 @@ class ScenarioOrchestrator:
             f"검색 파이프라인 완료 - {result.count}개 결과 "
             f"top='{result.results[0].model if result.results else 'none'}'"
         )
+
         return result
 
     # TODO: 배송/시착 시나리오 파이프라인 추가
@@ -810,16 +813,24 @@ async def endpoint_health():
 #         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
 #     return result
 
+# @app.post("/search")
+# async def endpoint_search(req: SearchRequest):
+#     logger.info(f"/search 수신 - keyword='{req.keyword}'")
+#     print("/search 수신 - keyword=", req)
+
+#     # result = await get_orchestrator().run_search_pipeline(req.keyword)
+#     result = await get_orchestrator().run_search_pipeline(req)
+
+#     if result is None:
+#         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
+
+#     return result
+
 @app.post("/search")
 async def endpoint_search(req: SearchRequest):
     logger.info(f"/search 수신 - keyword='{req.keyword}'")
-    print("/search 수신 - keyword=", req)
 
-    # result = await get_orchestrator().run_search_pipeline(req.keyword)
     result = await get_orchestrator().run_search_pipeline(req)
-
-    print("/search :", result)
-
     if result is None:
         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
 
@@ -854,7 +865,6 @@ def find_shoe_info(
         raise HTTPException(status_code=400, detail="data가 올바른 JSON 형식이 아닙니다.")
 
     shoe_id = payload.get("shoe_id")
-    print("find_shoe_info ============================ :", shoe_id)
 
     if not shoe_id or not str(shoe_id).strip():
         raise HTTPException(status_code=400, detail="shoe_id가 없습니다.")
