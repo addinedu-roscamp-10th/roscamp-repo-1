@@ -120,7 +120,6 @@ export default function ProductDetailPage() {
     if (!product?.shoe_id) return; // (product 아직 없을때 방지)
 
     const fetchInventory = async () => {
-      console.log("use effect[product] ================== shoe_id: ", product.shoe_id);
       try {
         const res = await fetch(
           `${API}/find_shoe_information?data=${encodeURIComponent(
