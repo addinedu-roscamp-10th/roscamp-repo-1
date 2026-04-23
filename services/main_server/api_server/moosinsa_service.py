@@ -31,9 +31,6 @@ Role      : 시스템 중앙 백엔드 서버 (FastAPI).
 실행: python moosinsa_service.py
 """
 
-import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
-
 import asyncio
 import json
 import logging
@@ -85,8 +82,8 @@ logger = logging.getLogger("moosinsa_service")
 
 # ── YOLO 서버 (UDP 송신) ──────────────────────────────────────
 # moosinsa_service → UDP → YOLO 서버 (tcp_main_ai.py)
-YOLO_SERVER_IP   = "192.168.1.120"                #.env로 이동 
-YOLO_SERVER_PORT = 6006         # tcp_main_ai.py 의 LISTEN_PORT 와 일치
+# YOLO_SERVER_IP   = "192.168.1.120"                #.env로 이동 
+# YOLO_SERVER_PORT = 6006         # tcp_main_ai.py 의 LISTEN_PORT 와 일치
 
 # ── YOLO 결과 수신 서버 (TCP 수신) ────────────────────────────
 # YOLO 서버 → TCP → moosinsa_service
@@ -796,24 +793,11 @@ async def lifespan(app: FastAPI):
 
     logger.info("Moosinsa Service 준비 완료")
     yield
-
-    fleet.close_all()          # ← 종료 시 추가
     logger.info("Moosinsa Service 종료")
 
 
 app = FastAPI(title="Moosinsa Service", lifespan=lifespan)
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=[
-#         "http://192.168.0.43:5173",
-#         "http://localhost:5173",
-#         "http://127.0.0.1:5173",
-#     ],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
 
 app.add_middleware(
     CORSMiddleware,
@@ -824,12 +808,12 @@ app.add_middleware(
 )
 
 
-# SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
-# app.mount(
-#     "/shoes_image",
-#     StaticFiles(directory=str(SHOES_IMAGE_DIR)),
-#     name="shoes_images",
-# )
+SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
+app.mount(
+    "/shoes_images",
+    StaticFiles(directory=str(SHOES_IMAGE_DIR)),
+    name="shoes_images",
+)
 
 def get_orchestrator() -> ScenarioOrchestrator:
     """오케스트레이터 의존성 주입 헬퍼. 초기화 전 요청 시 503 반환."""
@@ -911,6 +895,7 @@ async def endpoint_search(req: SearchRequest):
 
     return result
 
+
 @app.post("/find_shoe")
 def find_shoe(
     request: Request,
@@ -947,13 +932,6 @@ def find_shoe_info(
     return get_shoe_information_by_shoe_id_from_inventory(shoe_id)
 
 
-# @app.post("/tryon/request")
-# async def endpoint_tryon_request(product_id: str):
-#     return {
-#         "success": True,
-#         "message": "tryon request endpoint placeholder",
-#         "product_id": product_id,
-#     }
 @app.post("/tryon/request")
 async def endpoint_tryon_request(product_id: str, robot_id: str = "sshopy1"):
     ok = fleet.start_delivery(robot_id)
