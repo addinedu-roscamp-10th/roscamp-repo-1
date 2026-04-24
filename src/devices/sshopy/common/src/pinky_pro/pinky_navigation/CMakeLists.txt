@@ -26,17 +26,22 @@ endif()
 install(PROGRAMS
   scripts/nav2_web_server.py
   scripts/robot_nodes.py
+  scripts/mock_fms.py
+  scripts/pinky_state_machine.py
+  scripts/sshopy_node_v2.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(FILES
-  scripts/index.html scripts/pinklab_logo.png
+  scripts/index.html
+  scripts/pinklab_logo.png
+  scripts/pinky_config.yaml
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(
-  DIRECTORY launch params maps rviz
+  DIRECTORY launch params maps rviz behavior_trees
   DESTINATION share/${PROJECT_NAME}
-  )
+)
 
 ament_package()

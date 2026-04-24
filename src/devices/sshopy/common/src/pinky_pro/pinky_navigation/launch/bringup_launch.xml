@@ -33,7 +33,7 @@
 
         <!-- ★ 추가: keepout filter mask 서버 -->
         <node pkg="nav2_map_server" exec="map_server" name="filter_mask_server" output="screen">
-            <param name="yaml_filename" value="/home/addinedu/pinky_pro/src/pinky_pro/pinky_navigation/maps/keepout_moosinsa_map.yaml"/>
+            <param name="yaml_filename" value="/home/pinky/pinky_pro/src/pinky_pro/pinky_navigation/maps/keepout_moosinsa_map.yaml"/>
             <param name="topic_name" value="keepout_filter_mask"/>
             <param name="frame_id" value="map"/>
             <param name="use_sim_time" value="$(var use_sim_time)"/>
@@ -42,7 +42,7 @@
 
         <!-- ★ 추가: keepout을 static layer용으로도 발행, 금지구역에 레디우스 설정을 위해 추가--> 
         <node pkg="nav2_map_server" exec="map_server" name="keepout_static_server" output="screen">
-            <param name="yaml_filename" value="/home/addinedu/pinky_pro/src/pinky_pro/pinky_navigation/maps/keepout_moosinsa_map.yaml"/>
+            <param name="yaml_filename" value="/home/pinky/pinky_pro/src/pinky_pro/pinky_navigation/maps/keepout_moosinsa_map.yaml"/>
             <param name="topic_name" value="keepout_static_map"/>
             <param name="frame_id" value="map"/>
             <param name="use_sim_time" value="$(var use_sim_time)"/>
