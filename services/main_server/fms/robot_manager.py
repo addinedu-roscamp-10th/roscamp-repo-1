@@ -10,9 +10,9 @@ Auto-reconnect behaviour:
   - React UI sees the change within the next WebSocket heartbeat (1 s).
 
 Delivery scenario (start_delivery):
-  stage 0: sshopy → 창고(0.352, 0.488) 이동 → 도착 → ware_jet 팔 동작 → stage 1
-  stage 1: sshopy → 매장(1.080, 0.456) 이동 → 도착 → front_jet 팔 동작 → stage 2
-  stage 2: sshopy → 홈(0.0, 0.0) 복귀 → 도착 → 완료
+  stage 0: sshopy → 창고(0.264, 0.509) 이동 → 도착 → ware_jet 팔 동작 → stage 1
+  stage 1: sshopy → 매장(0.918, 0.426) 이동 → 도착 → front_jet 팔 동작 → stage 2
+  stage 2: sshopy → 홈(1.086, 0.081) 복귀 → 도착 → 완료
 """
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
@@ -30,9 +30,9 @@ RECONNECT_INTERVAL = 5   # seconds between reconnect sweeps
 
 # ── 배달 시나리오 웨이포인트 ────────────────────────────────────────────────────
 WAYPOINTS = {
-    0: {"x": 0.352, "y": 0.488, "theta": 1.670},  # 창고
-    1: {"x": 1.080, "y": 0.456, "theta": 1.485},  # 매장
-    2: {"x": 0.0,   "y": 0.0,   "theta": 0.0  },  # 홈
+    0: {"x": 0.264, "y": 0.509, "theta": 1.674},  # 창고
+    1: {"x": 0.918, "y": 0.426, "theta": 1.655},  # 매장
+    2: {"x": 1.086, "y": 0.081, "theta": -0.362},  # 홈
 }
 ARRIVAL_THRESHOLD = 0.3   # 도착 판정 거리 (m)
 ARRIVAL_COOLDOWN  = 5.0   # 같은 웨이포인트 중복 트리거 방지 (초)
@@ -372,6 +372,7 @@ from pymycobot.mycobot import MyCobot
 import time
 mc = MyCobot('/dev/ttyJETCOBOT', 1000000)
 mc.thread_lock = True
+time.sleep(2.5)
 mc.send_angles([45, 0, 0, 0, 0, 0], 40)
 time.sleep(2.5)
 mc.send_angles([-45, 0, 0, 0, 0, 0], 40)
