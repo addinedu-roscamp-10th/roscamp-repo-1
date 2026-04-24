@@ -31,6 +31,9 @@ Role      : 시스템 중앙 백엔드 서버 (FastAPI).
 실행: python moosinsa_service.py
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import asyncio
 import json
@@ -88,7 +91,7 @@ logger = logging.getLogger("moosinsa_service")
 
 # ── YOLO 결과 수신 서버 (TCP 수신) ────────────────────────────
 # YOLO 서버 → TCP → moosinsa_service
-YOLO_RESULT_LISTEN_IP   = "0.0.0.0"
+YOLO_RESULT_LISTEN_IP   = "192.168.1.11"
 YOLO_RESULT_LISTEN_PORT = 8008  # tcp_main_ai.py 의 MAIN_SERVER_PORT 와 일치
 
 # ── YOLO UDP 청크 헤더 ────────────────────────────────────────
@@ -323,6 +326,7 @@ class YOLOResultServer:
     def __init__(self, listen_ip: str, listen_port: int):
         self.listen_ip     = listen_ip
         self.listen_port   = listen_port
+        self.latest_seat_status: Optional[list] = None
         self.latest_result: Optional[dict] = None
         self._lock   = threading.Lock()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -367,12 +371,6 @@ class YOLOResultServer:
                 logger.error(f"YOLOResultServer accept 오류: {e}")
 
     def _handle_conn(self, conn: socket.socket, addr):
-        """
-        단일 연결 처리.
-          1) 4bytes 헤더로 payload 길이 수신
-          2) payload JSON 파싱 후 latest_result 갱신
-          3) PySide6 관제 UI 로 동일 데이터 포워딩
-        """
         try:
             raw_len = self._recv_exact(conn, 4)
             if not raw_len:
@@ -382,20 +380,28 @@ class YOLOResultServer:
             if not raw_data:
                 return
 
-            result = json.loads(raw_data.decode("utf-8"))
-            with self._lock:
-                self.latest_result = result
+            result   = json.loads(raw_data.decode("utf-8"))
+            msg_type = result.get("type")  # ← 선언 추가
 
-            logger.info(
-                f"[YOLO 결과 수신] from={addr} "
-                f"robot_id={result.get('robot_id')} "
-                f"frame_id={result.get('frame_id')} "
-                f"person_count={result.get('person_count')} "
-                f"process_ms={result.get('process_ms')}ms"
-            )
-
-            # PySide6 관제 UI 포워딩 (실패해도 메인 흐름에 영향 없음)
-            self._forward_to_cam_ui(raw_data)
+            if msg_type == "seat_status":
+                with self._lock:
+                    self.latest_seat_status = result.get("seats")
+                logger.info(
+                    f"[좌석 상태 수신] from={addr} "
+                    f"seats={result.get('seats')} "
+                    f"timestamp={result.get('timestamp')}"
+                )
+            else:  # YOLO 결과
+                with self._lock:
+                    self.latest_result = result
+                logger.info(
+                    f"[YOLO 결과 수신] from={addr} "
+                    f"robot_id={result.get('robot_id')} "
+                    f"frame_id={result.get('frame_id')} "
+                    f"person_count={result.get('person_count')} "
+                    f"process_ms={result.get('process_ms')}ms"
+                )
+                self._forward_to_cam_ui(raw_data)
 
         except Exception as e:
             logger.error(f"YOLOResultServer 처리 오류: {e}")
@@ -809,12 +815,12 @@ app.add_middleware(
 )
 
 
-SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
-app.mount(
-    "/shoes_images",
-    StaticFiles(directory=str(SHOES_IMAGE_DIR)),
-    name="shoes_images",
-)
+# SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
+# app.mount(
+#     "/shoes_images",
+#     StaticFiles(directory=str(SHOES_IMAGE_DIR)),
+#     name="shoes_images",
+# )
 
 def get_orchestrator() -> ScenarioOrchestrator:
     """오케스트레이터 의존성 주입 헬퍼. 초기화 전 요청 시 503 반환."""
