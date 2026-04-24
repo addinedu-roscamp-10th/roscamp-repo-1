@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import './ProductDetailPage.css';
 
 
-
 type Product = {
   shoe_id: string;
   model: string;
@@ -15,6 +14,7 @@ type Product = {
   sizes: number[];
   colors: string[];
 };
+
 
 type ShoeDetailInfo = {
   shoe_id: string;
