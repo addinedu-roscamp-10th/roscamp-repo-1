@@ -171,6 +171,10 @@ class RobotManager:
         except Exception as e:
             self._states[robot_id].connected = False
             print(f"[fleet] {robot_id} offline — {e}")
+            try:
+                client.close()
+            except Exception:
+                pass
 
     def _mark_offline(self, robot_id: str):
         with self._lock:
