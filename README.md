@@ -72,9 +72,6 @@ git checkout -b feature/daejaehun-api-tryon
 # 변경된 파일 확인
 git status
 
-# 변경 내용 확인(확인 후 q로 나오기)
-git diff
-
 # 파일 스테이징 (전체)
 git add .
 
@@ -103,6 +100,25 @@ git push origin feature/daejaehun-api-tryon
 
 ---
 
+### 충돌(conflict)이 났을 때
+
+```bash
+# develop 최신 내용을 내 브랜치에 먼저 합치기
+git checkout feature/daejaehun-api-tryon
+git fetch origin
+git rebase origin/develop
+
+# 'Successfully rebased and updated feature/xxx'가 출력될 때까지 다음 내용 반복:
+git add .
+git rebase --continue
+
+# 출력된 걸 확인하면, git status 로 
+# 'On branch feature/xxx nothing to commit, working tree clean'출력이 뜨면 정상적으로 완료된 것
+git push origin feature/daejaehun-api-tryon --force
+```
+
+---
+
 ### 5단계 — 다음 작업 시작할 때
 
 ```bash
@@ -114,21 +130,6 @@ git pull origin develop
 
 # 새 feature 브랜치 생성
 git checkout -b feature/[이름]-[다음기능]
-```
-
----
-
-### 충돌(conflict)이 났을 때
-
-```bash
-# develop 최신 내용을 내 브랜치에 먼저 합치기
-git checkout feature/daejaehun-api-tryon
-git pull origin develop
-
-# 충돌 파일 열어서 직접 수정 후
-git add .
-git commit -m "Fix: develop 브랜치 충돌 해결"
-git push origin feature/daejaehun-api-tryon
 ```
 
 ---
