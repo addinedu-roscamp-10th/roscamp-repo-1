@@ -49,6 +49,7 @@ function getShoeId() {
   }
 }
 
+
 export default function ProductDetailPage() {
   const navigate = useNavigate();
 
