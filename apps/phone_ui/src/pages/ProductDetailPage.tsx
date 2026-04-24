@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './ProductDetailPage.css';
 
+import ArrivalModal from "./ArrivalModal";
+
 
 type Product = {
   shoe_id: string;
@@ -70,6 +72,53 @@ export default function ProductDetailPage() {
   const [isFindDialogOpen, setIsFindDialogOpen] = useState(false);
   const [findInput, setFindInput] = useState('');
   const [findLoading, setFindLoading] = useState(false);
+
+
+  // 도착 팝업
+  const [isArriveOpen, setIsArriveOpen] = useState(false);
+
+
+  useEffect(() => {
+    if (!API) return;
+
+    const wsUrl = API.replace('http://', 'ws://').replace('https://', 'wss://');
+
+    const ws = new WebSocket(`${wsUrl}/ws/amr`);
+
+    ws.onopen = () => {
+      console.log('AMR WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('AMR WebSocket message:', data);
+
+        if (data.type === 'AMR_ARRIVE') {
+          setMsg('AMR이 도착했습니다.');
+
+          // 필요하면 여기서 화면 이동도 가능
+          // navigate('/some-page');
+          setIsArriveOpen(true);
+        }
+      } catch (e) {
+        console.error('WebSocket message parse error:', e);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('AMR WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('AMR WebSocket closed');
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
+
 
   useEffect(() => {
     const id = getShoeId();
@@ -165,6 +214,8 @@ export default function ProductDetailPage() {
   useEffect(() => {
     console.log('displayImage:', displayImage);
   }, [displayImage]);
+
+
   
 
   useEffect(() => {
@@ -229,24 +280,25 @@ export default function ProductDetailPage() {
 
   const handleTryOnRequest = async () => {
     try {
-      const tryOnRes = await fetch(`${API}/try-on-request`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: product?.model,
-          robot_name: 'shoppy1',
-        }),
-      });
+      // const tryOnRes = await fetch(`${API}/try-on-request`, {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: JSON.stringify({
+      //     model: product?.model,
+      //     robot_name: 'shoppy1',
+      //   }),
+      // });
 
-      const tryOnData = await tryOnRes.json();
-      console.log('try-on:', tryOnData);
+      // const tryOnData = await tryOnRes.json();
+      // console.log('try-on:', tryOnData);
 
-      if (!tryOnData.success) {
-        alert('시착 요청 접수 실패');
-        return;
-      }
+      // if (!tryOnData.success) {
+      //   alert('시착 요청 접수 실패');
+      //   return;
+      // }
+      return //임시로 막는다. 
 
       const robotRes = await fetch(`${API}/robot/forward`, {
         method: 'POST',
@@ -456,6 +508,7 @@ export default function ProductDetailPage() {
   return (
     <div className="page-container">
 
+      <ArrivalModal open={isArriveOpen} onClose={() => setIsArriveOpen(false)} />
       {/* ✅ 여기 넣기 (main-card 위) */}
       {isFindDialogOpen && (
         <div className="dialog-overlay">
