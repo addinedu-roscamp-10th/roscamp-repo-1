@@ -437,3 +437,9 @@ body.modal-open {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.seat-btn.occupied {
+  background: #444;
+  color: #aaa;
+  cursor: not-allowed;
+}

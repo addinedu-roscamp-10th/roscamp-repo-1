@@ -74,6 +74,9 @@ export default function ProductDetailPage() {
   const [findLoading, setFindLoading] = useState(false);
 
 
+  // 좌석 정보 
+  const [seatStatus, setSeatStatus] = useState<number[]>([0, 0, 0, 0]);
+
   // 도착 팝업
   const [isArriveOpen, setIsArriveOpen] = useState(false);
 
@@ -117,6 +120,27 @@ export default function ProductDetailPage() {
     return () => {
       ws.close();
     };
+  }, []);
+
+
+  //seat info 
+  useEffect(() => {
+    const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/seat`);
+
+    ws.onopen = () => {
+      console.log('seat ws connected');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === 'SEAT') {
+        console.log('seat update:', data.data);
+        setSeatStatus(data.data);
+      }
+    };
+
+    return () => ws.close();
   }, []);
 
 
@@ -644,6 +668,23 @@ export default function ProductDetailPage() {
                     {s}
                   </button>
                 ))}
+                {/* {seats.map((s, idx) => {
+                  const occupied = seatStatus[idx] === 1;
+
+                  return (
+                    <button
+                      key={s}
+                      disabled={occupied}
+                      className={`seat-btn 
+                        ${seat === s ? 'active' : ''} 
+                        ${occupied ? 'occupied' : ''}
+                      `}
+                      onClick={() => setSeat(s)}
+                    >
+                      {occupied ? '사용중' : s}
+                    </button>
+                  );
+                })} */}
               </div>
 
               <div className="seat-labels">
