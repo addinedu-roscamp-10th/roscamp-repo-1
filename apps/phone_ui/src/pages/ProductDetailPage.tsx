@@ -15,6 +15,7 @@ type Product = {
   colors: string[];
 };
 
+
 type ShoeDetailInfo = {
   shoe_id: string;
   product_id: string;
@@ -25,10 +26,11 @@ type ShoeDetailInfo = {
   image_url: string;
 };
 
+
 const seats = [1, 2, 3, 4];
 const API = import.meta.env.VITE_API_URL;
 
-console.log("API:", API );
+// console.log("API:", API );
 
 function getShoeId() {
   const params = new URLSearchParams(window.location.search);
