@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './ProductDetailPage.css';
 
 
+
 type Product = {
   shoe_id: string;
   model: string;
@@ -24,6 +25,7 @@ type ShoeDetailInfo = {
   color: string;
   image_url: string;
 };
+
 
 const seats = [1, 2, 3, 4];
 const API = import.meta.env.VITE_API_URL;
