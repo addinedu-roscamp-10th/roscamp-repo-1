@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+roslibpy
+paramiko
+mysql-connector-python
+python-dotenv
