@@ -15,7 +15,7 @@ DB_CONFIG = {
     "charset": "utf8mb4",
 }
 
-TABLE_NAME = "llm_shoes"
+TABLE_NAME = "shoes"
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 9000
 TOP_K = 3
@@ -24,7 +24,7 @@ TAG_SCHEMA = {
     "activity": ["러닝", "웨이트", "등산", "축구", "농구", "데이트", "출근", "일상", "격식", "캠핑", "물놀이"],
     "style": ["힙한", "무난한", "깔끔한", "화려한", "빈티지", "클래식", "귀여운", "레트로", "테크웨어", "고프코어", "스포티", "발레코어"],
     "feature": ["쿠션감", "발볼 넓음", "방수", "키높이", "가벼움", "통기성", "미끄럼 방지", "편안함", "내구성", "보온성"],
-    "color": ["화이트", "블랙", "그레이", "레드", "오렌지", "옐로우", "그린", "블루", "퍼플", "브라운", "베이지", "실버", "네이비", "핑크"],
+    "color": ["white", "black", "gray", "grey", "red", "orange", "yellow", "green", "blue", "purple", "brown", "beige", "silver", "navy", "pink"],
     "brand": ["나이키", "아디다스", "뉴발란스", "반스", "컨버스", "아식스", "살로몬", "오니츠카타이거", "푸마", "미즈노", "킨", "호카", "닥터마틴", "어그", "리복"],
     "season_weather": ["봄/가을용", "여름용", "겨울용", "사계절용", "우천용"],
     "price": ["가성비", "일반", "프리미엄"],
@@ -102,6 +102,43 @@ def decompose_hangul(text):
     return "".join(result)
 
 
+def parse_color_field(color_raw):
+    """
+    DB의 colors/color 컬럼을 list[str]로 통일
+    예:
+    - '["white","black"]' -> ["white", "black"]
+    - 'white' -> ["white"]
+    - None -> []
+    """
+    if color_raw is None:
+        return []
+
+    if isinstance(color_raw, list):
+        return [str(c).strip().lower() for c in color_raw if str(c).strip()]
+
+    if isinstance(color_raw, str):
+        color_raw = color_raw.strip()
+        if not color_raw:
+            return []
+
+        try:
+            parsed = json.loads(color_raw)
+            if isinstance(parsed, list):
+                return [str(c).strip().lower() for c in parsed if str(c).strip()]
+        except Exception:
+            pass
+
+        return [color_raw.lower()]
+
+    return [str(color_raw).strip().lower()]
+
+
+def color_list_to_text(color_value):
+    if isinstance(color_value, list):
+        return " ".join(str(c) for c in color_value if str(c).strip())
+    return str(color_value)
+    
+
 def load_inventory_from_db():
     inventory = []
     conn = pymysql.connect(**DB_CONFIG)
@@ -112,11 +149,14 @@ def load_inventory_from_db():
             rows = cursor.fetchall()
 
             for row in rows:
+                color_raw = row.get("colors") if row.get("colors") is not None else row.get("color", "")
+                color_parsed = parse_color_field(color_raw)
+
                 inventory.append({
                     "id": row.get("id"),
                     "brand": row.get("brand"),
                     "model": row.get("model"),
-                    "color": row.get("colors") if row.get("colors") is not None else row.get("color", ""),
+                    "color": color_parsed,
                     "image_url": row.get("image_url"),
                     "price": row.get("price"),
                     "tags": row.get("tags") or ""
@@ -257,7 +297,8 @@ def score_shoe(shoe, accumulated_tags, target_model, mentioned_brands, user_text
     return score
 
 def match_all_filters(shoe, accumulated_tags):
-    db_str = f"{shoe['brand']} {shoe['model']} {shoe['color']} {shoe['tags']}".lower().replace(" ", "")
+    color_str = color_list_to_text(shoe["color"])
+    db_str = f"{shoe['brand']} {shoe['model']} {color_str} {shoe['tags']}".lower().replace(" ", "")
 
     for field, vals in accumulated_tags.items():
         if not vals:
@@ -288,7 +329,8 @@ def get_recommendations(user_text, accumulated_tags, inventory):
     ranked = []
     for shoe in candidates:
         score = 0
-        db_str = f"{shoe['brand']} {shoe['model']} {shoe['color']} {shoe['tags']}".lower().replace(" ", "")
+        color_str = color_list_to_text(shoe["color"])
+        db_str = f"{shoe['brand']} {shoe['model']} {color_str} {shoe['tags']}".lower().replace(" ", "")
 
         # 1) 누적 태그 점수
         for field, vals in accumulated_tags.items():
@@ -319,7 +361,7 @@ def get_recommendations(user_text, accumulated_tags, inventory):
         # 5) 색상 누적 조건도 점수로만 반영
         target_colors = accumulated_tags.get("color", [])
         for color in target_colors:
-            if normalize_text(color) in normalize_text(shoe["color"]):
+            if any(normalize_text(color) in normalize_text(col) for col in shoe["color"]):
                 score += 20
 
         # 원본처럼:
@@ -388,7 +430,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             for idx, item in enumerate(ranked, start=1):
                 print(f"  │ [{idx}] 브랜드 : {item['brand']}")
                 print(f"  │     모델명 : {item['model']}")
-                print(f"  │     색상   : {item['colors']}")
+                print(f"  │     색상   : {', '.join(item['colors']) if isinstance(item['colors'], list) else item['colors']}")
                 if isinstance(item["price"], int):
                     print(f"  │     가격   : {item['price']:,}원")
                 else:

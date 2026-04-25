@@ -31,6 +31,10 @@ Role      : 시스템 중앙 백엔드 서버 (FastAPI).
 실행: python moosinsa_service.py
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import asyncio
 import json
 import logging
@@ -47,7 +51,8 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from fms.robot_manager import fleet
 
 from db.mysql import (
     get_shoe_all_information,
@@ -86,7 +91,7 @@ logger = logging.getLogger("moosinsa_service")
 
 # ── YOLO 결과 수신 서버 (TCP 수신) ────────────────────────────
 # YOLO 서버 → TCP → moosinsa_service
-YOLO_RESULT_LISTEN_IP   = "0.0.0.0"
+YOLO_RESULT_LISTEN_IP   = "192.168.1.11"
 YOLO_RESULT_LISTEN_PORT = 8008  # tcp_main_ai.py 의 MAIN_SERVER_PORT 와 일치
 
 # ── YOLO UDP 청크 헤더 ────────────────────────────────────────
@@ -98,8 +103,8 @@ YOLO_CHUNK_SIZE    = 60000      # UDP 패킷당 최대 페이로드 크기 (byte
 # ── PySide6 관제 UI 포워딩 (YOLO 결과 미러링) ─────────────────
 # YOLOResultServer 가 결과를 수신하면 이 주소로도 동일 결과를 전달한다.
 # PySide6 GUI 의 TCP 수신 포트와 일치시킬 것.
-# CAM_UI_IP   = "192.168.1.120"                     #.env로 이동 
-# CAM_UI_PORT = 8009
+CAM_UI_IP   = "192.168.1.11"                     #.env로 이동 
+CAM_UI_PORT = 8009
 
 # TODO: 컴포넌트 추가 시 HOST/PORT 상수 여기에 추가
 # DB_HOST  = "localhost"
@@ -113,16 +118,17 @@ YOLO_CHUNK_SIZE    = 60000      # UDP 패킷당 최대 페이로드 크기 (byte
 
 class SearchRequest(BaseModel):
     """React 또는 PySide6 → /search 요청 본문"""
-    keyword: str
-    accumulated_tags: dict = {}     # 누적 태그; 첫 요청은 빈 dict
+    keyword: str   
+    accumulated_tags: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ShoeItem(BaseModel):
     """M_LLM 이 반환하는 개별 상품 정보"""
     id: Optional[int] = None
+    shoe_id: str = ""
     brand: str = ""
     model: str = ""
-    colors: str = ""
+    colors: list[str] = Field(default_factory=list)
     price: int = 0
     image_url: str = ""
     tags: str = ""
@@ -320,6 +326,7 @@ class YOLOResultServer:
     def __init__(self, listen_ip: str, listen_port: int):
         self.listen_ip     = listen_ip
         self.listen_port   = listen_port
+        self.latest_seat_status: Optional[list] = None
         self.latest_result: Optional[dict] = None
         self._lock   = threading.Lock()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -364,12 +371,6 @@ class YOLOResultServer:
                 logger.error(f"YOLOResultServer accept 오류: {e}")
 
     def _handle_conn(self, conn: socket.socket, addr):
-        """
-        단일 연결 처리.
-          1) 4bytes 헤더로 payload 길이 수신
-          2) payload JSON 파싱 후 latest_result 갱신
-          3) PySide6 관제 UI 로 동일 데이터 포워딩
-        """
         try:
             raw_len = self._recv_exact(conn, 4)
             if not raw_len:
@@ -379,20 +380,28 @@ class YOLOResultServer:
             if not raw_data:
                 return
 
-            result = json.loads(raw_data.decode("utf-8"))
-            with self._lock:
-                self.latest_result = result
+            result   = json.loads(raw_data.decode("utf-8"))
+            msg_type = result.get("type")  # ← 선언 추가
 
-            logger.info(
-                f"[YOLO 결과 수신] from={addr} "
-                f"robot_id={result.get('robot_id')} "
-                f"frame_id={result.get('frame_id')} "
-                f"person_count={result.get('person_count')} "
-                f"process_ms={result.get('process_ms')}ms"
-            )
-
-            # PySide6 관제 UI 포워딩 (실패해도 메인 흐름에 영향 없음)
-            self._forward_to_cam_ui(raw_data)
+            if msg_type == "seat_status":
+                with self._lock:
+                    self.latest_seat_status = result.get("seats")
+                logger.info(
+                    f"[좌석 상태 수신] from={addr} "
+                    f"seats={result.get('seats')} "
+                    f"timestamp={result.get('timestamp')}"
+                )
+            else:  # YOLO 결과
+                with self._lock:
+                    self.latest_result = result
+                logger.info(
+                    f"[YOLO 결과 수신] from={addr} "
+                    f"robot_id={result.get('robot_id')} "
+                    f"frame_id={result.get('frame_id')} "
+                    f"person_count={result.get('person_count')} "
+                    f"process_ms={result.get('process_ms')}ms"
+                )
+                self._forward_to_cam_ui(raw_data)
 
         except Exception as e:
             logger.error(f"YOLOResultServer 처리 오류: {e}")
@@ -422,6 +431,7 @@ class YOLOResultServer:
                 return None
             buf += chunk
         return buf
+    
 
 
 class YOLOClient:
@@ -518,7 +528,50 @@ class YOLOClient:
 
 
 # ══════════════════════════════════════════════════════════════
-# [5] Moosinsa Service ↔ MSS DB (MySQL)
+# [5] Moosinsa Service ↔ Top View Camera(TVC) 서버
+#
+#
+#
+# ══════════════════════════════════════════════════════════════
+
+class CameraUDPServer:
+    def __init__(self, listen_ip="192.168.1.9", listen_port=7007):
+        self.listen_ip = listen_ip
+        self.listen_port = listen_port
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+        logger.info(f"CameraUDPServer 시작: {self.listen_ip}:{self.listen_port}")
+
+    def _run(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((self.listen_ip, self.listen_port))
+
+        while True:
+            try:
+                data, addr = sock.recvfrom(65535)
+
+                logger.info(f"[UDP RECV] from={addr}, bytes={len(data)}")
+
+                # 그대로 GUI로 forward
+                self._forward_to_cam_ui(data)
+
+            except Exception as e:
+                logger.error(f"CameraUDPServer error: {e}")
+
+    def _forward_to_cam_ui(self, raw_data: bytes):
+        try:
+            fwd_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            fwd_sock.connect((CAM_UI_IP, CAM_UI_PORT))
+            fwd_sock.sendall(struct.pack("!I", len(raw_data)) + raw_data)
+            fwd_sock.close()
+        except Exception as e:
+            logger.warning(f"Camera UI forward 실패: {e}")
+
+
+# ══════════════════════════════════════════════════════════════
+# [6]] Moosinsa Service ↔ MSS DB (MySQL)
 #     TODO: DBClient 구현 시 이 섹션에 추가
 # ══════════════════════════════════════════════════════════════
 
@@ -539,7 +592,7 @@ class YOLOClient:
 
 
 # ══════════════════════════════════════════════════════════════
-# [6] Moosinsa Service ↔ 로봇 (ROS2)
+# [7] Moosinsa Service ↔ 로봇 (ROS2)
 #     TODO: ROS2 클라이언트 구현 시 이 섹션에 추가
 # ══════════════════════════════════════════════════════════════
 
@@ -640,6 +693,7 @@ class ScenarioOrchestrator:
                 user_text=req.keyword,
                 accumulated_tags=req.accumulated_tags,
             )
+            
             if result is None:
                 self._log_step_failure("STEP3_MLLM_FILTER", "필터링 결과 없음")
                 return None
@@ -660,6 +714,7 @@ class ScenarioOrchestrator:
             f"검색 파이프라인 완료 - {result.count}개 결과 "
             f"top='{result.results[0].model if result.results else 'none'}'"
         )
+
         return result
 
     # TODO: 배송/시착 시나리오 파이프라인 추가
@@ -713,6 +768,13 @@ async def lifespan(app: FastAPI):
         result_server=yolo_result_server,
     )
 
+    # Top View Camera 데이터 수신 서버
+    camera_udp_server = CameraUDPServer(
+        listen_ip="0.0.0.0",
+        listen_port=7007
+    )
+    camera_udp_server.start()
+
     # ScenarioOrchestrator 조립
     _orchestrator = ScenarioOrchestrator(
         llm_client  = llm_client,
@@ -729,6 +791,13 @@ async def lifespan(app: FastAPI):
     #     cam_client  = TopViewCamClient(...),
     # )
 
+    # ── fleet 초기화 추가 ──────────────────────────────
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, fleet.connect_all)
+    fleet.start_reconnect_loop()
+    logger.info("Robot fleet 초기화 완료")
+    # ──────────────────────────────────────────────────
+
     logger.info("Moosinsa Service 준비 완료")
     yield
     logger.info("Moosinsa Service 종료")
@@ -736,17 +805,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Moosinsa Service", lifespan=lifespan)
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=[
-#         "http://192.168.0.43:5173",
-#         "http://localhost:5173",
-#         "http://127.0.0.1:5173",
-#     ],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
 
 app.add_middleware(
     CORSMiddleware,
@@ -757,12 +815,12 @@ app.add_middleware(
 )
 
 
-SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
-app.mount(
-    "/shoes_images",
-    StaticFiles(directory=str(SHOES_IMAGE_DIR)),
-    name="shoes_images",
-)
+# SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
+# app.mount(
+#     "/shoes_images",
+#     StaticFiles(directory=str(SHOES_IMAGE_DIR)),
+#     name="shoes_images",
+# )
 
 def get_orchestrator() -> ScenarioOrchestrator:
     """오케스트레이터 의존성 주입 헬퍼. 초기화 전 요청 시 503 반환."""
@@ -821,19 +879,29 @@ async def endpoint_health():
 #         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
 #     return result
 
+# @app.post("/search")
+# async def endpoint_search(req: SearchRequest):
+#     logger.info(f"/search 수신 - keyword='{req.keyword}'")
+#     print("/search 수신 - keyword=", req)
+
+#     # result = await get_orchestrator().run_search_pipeline(req.keyword)
+#     result = await get_orchestrator().run_search_pipeline(req)
+
+#     if result is None:
+#         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
+
+#     return result
+
 @app.post("/search")
 async def endpoint_search(req: SearchRequest):
     logger.info(f"/search 수신 - keyword='{req.keyword}'")
-    print("/search 수신 - keyword=", req)
 
-    result = await get_orchestrator().run_search_pipeline(req.keyword)
-
-    print("/search :", result)
-
+    result = await get_orchestrator().run_search_pipeline(req)
     if result is None:
         raise HTTPException(status_code=404, detail="검색 파이프라인 실패. 로그를 확인하세요.")
 
     return result
+
 
 @app.post("/find_shoe")
 def find_shoe(
@@ -864,7 +932,6 @@ def find_shoe_info(
         raise HTTPException(status_code=400, detail="data가 올바른 JSON 형식이 아닙니다.")
 
     shoe_id = payload.get("shoe_id")
-    print("find_shoe_info ============================ :", shoe_id)
 
     if not shoe_id or not str(shoe_id).strip():
         raise HTTPException(status_code=400, detail="shoe_id가 없습니다.")
@@ -873,12 +940,12 @@ def find_shoe_info(
 
 
 @app.post("/tryon/request")
-async def endpoint_tryon_request(product_id: str):
-    return {
-        "success": True,
-        "message": "tryon request endpoint placeholder",
-        "product_id": product_id,
-    }
+async def endpoint_tryon_request(product_id: str, robot_id: str = "sshopy1"):
+    ok = fleet.start_delivery(robot_id)
+    if not ok:
+        raise HTTPException(status_code=503, detail=f"{robot_id} 연결 안 됨")
+    logger.info(f"[tryon/request] 배달 시작 → robot={robot_id} product={product_id}")
+    return {"success": True, "robot_id": robot_id, "product_id": product_id}
 
 # TODO: 시나리오 확장 시 엔드포인트 추가
 # @app.post("/tryon/request", response_model=TryonResponse)

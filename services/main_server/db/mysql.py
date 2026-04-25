@@ -75,7 +75,6 @@ def get_shoe_all_information():
     conn = None
     cursor = None
 
-    print('get_shoe_all_information ------ ');
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -86,7 +85,6 @@ def get_shoe_all_information():
         """
         cursor.execute(sql)
         rows = cursor.fetchall()
-        print(rows)
         return rows
 
     except mysql.connector.Error as e:
@@ -106,7 +104,7 @@ def get_shoe_all_information():
 
 # def get_shoe_information_by_shoe_id 등록한 신발 중 shoe_id 로 검색
 def get_shoe_information_by_shoe_id(shoe_id: str):   
-    print("get_product_by_shoe_id: ", shoe_id)
+    
     conn = None
     cursor = None
 
@@ -124,9 +122,6 @@ def get_shoe_information_by_shoe_id(shoe_id: str):
 
         if not rows:
             raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
-
-        # image_url = build_image_url(row, image_base_url)
-
         return rows
 
     except mysql.connector.Error as e:
@@ -145,7 +140,7 @@ def get_shoe_information_by_shoe_id(shoe_id: str):
 
 #창고 신발 조회
 def get_shoe_information_by_shoe_id_from_inventory(shoe_id: str):   
-    print("get_shoe_information_by_shoe_id_from_inventory: ", shoe_id)
+    
     conn = None
     cursor = None
 
@@ -163,8 +158,6 @@ def get_shoe_information_by_shoe_id_from_inventory(shoe_id: str):
 
         if not rows:
             raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
-
-        # image_url = build_image_url(row, image_base_url)
 
         return rows
 

@@ -5,7 +5,7 @@ import time
 import base64
 import cv2
 import numpy as np
-LISTEN_IP = "0.0.0.0"
+LISTEN_IP = "192.168.1.11"
 LISTEN_PORT = 8009
 latest_results = {}
 WINDOW_NAME = "Main Detection Dashboard"
@@ -47,12 +47,16 @@ def draw_panel(img, x, y, robot_id, result):
         cv2.putText(img, "No preview", (x + 315, y + 115), FONT, 0.6, (0, 0, 255), 1)
         return
     frame_id = result.get("frame_id", -1)
+    # person_count = result.get("person_count", 0)
     person_count = result.get("person_count", 0)
+    if result.get("type") == "camera_only":
+        person_count = "-"
     process_ms = result.get("process_ms")
     timestamp = result.get("timestamp", 0)
     preview_b64 = result.get("preview_b64")
     person_text = result.get("person_text", "")
-    status_text = result.get("status_text", "")
+    # status_text = result.get("status_text", "")
+    status_text = "Camera Streaming" if result.get("type") == "camera_only" else result.get("status_text", "")
     warning_text = result.get("warning_text", "")
     age = time.time() - timestamp
     cv2.putText(img, f"Frame ID: {frame_id}", (x + 15, y + 60), FONT, 0.55, (255, 255, 255), 1)
