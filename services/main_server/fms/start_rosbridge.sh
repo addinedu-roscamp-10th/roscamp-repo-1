@@ -9,6 +9,7 @@
 #   sshopy3  domain 13 → port 9093
 #   front_jet domain 14 → port 9094
 #   ware_jet  domain 15 → port 9095
+#   arm_robot domain 50 → port 9050
 
 set -eo pipefail
 
@@ -28,10 +29,12 @@ sleep 1
 declare -A DOMAINS=(
     [sshopy1]=11   [sshopy2]=12   [sshopy3]=13
     [front_jet]=14 [ware_jet]=15
+    [arm_robot]=50
 )
 declare -A PORTS=(
     [sshopy1]=9091 [sshopy2]=9092 [sshopy3]=9093
     [front_jet]=9094 [ware_jet]=9095
+    [arm_robot]=9050
 )
 
 for robot in sshopy1 sshopy2 sshopy3 front_jet ware_jet; do
