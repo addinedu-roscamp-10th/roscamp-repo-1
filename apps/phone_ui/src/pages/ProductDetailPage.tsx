@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './ProductDetailPage.css';
 
 import ArrivalModal from "./ArrivalModal";
+import TryOnModal from './TryOnModal';
 
 
 type Product = {
@@ -77,6 +78,12 @@ export default function ProductDetailPage() {
   // 좌석 정보 
   const [seatStatus, setSeatStatus] = useState<number[]>([0, 0, 0, 0]);
 
+  // 시착 요청
+  const [tryOnPopupOpen, setTryOnPopupOpen] = useState(false);
+  const [tryOnLoading, setTryOnLoading] = useState(false);
+
+  const [failModalOpen, setFailModalOpen] = useState(false);
+
   // 도착 팝업
   const [isArriveOpen, setIsArriveOpen] = useState(false);
 
@@ -103,6 +110,7 @@ export default function ProductDetailPage() {
           // 필요하면 여기서 화면 이동도 가능
           // navigate('/some-page');
           setIsArriveOpen(true);
+          setTryOnPopupOpen(false);
         }
       } catch (e) {
         console.error('WebSocket message parse error:', e);
@@ -197,6 +205,7 @@ export default function ProductDetailPage() {
 
     const fetchInventory = async () => {
       try {
+        console.log("fetchInventory: ", product.shoe_id)
         const res = await fetch(
           `${API}/find_shoe_information?data=${encodeURIComponent(
             JSON.stringify({ shoe_id: product.shoe_id })
@@ -213,7 +222,7 @@ export default function ProductDetailPage() {
 
         const data = await res.json();
         setInventory(data); //배열 그대로 넣기
-
+        console.log("data 보기:", data)
         if (data.length > 0) {
           const first = data[0];
           setSelectedSize(first.size);
@@ -238,6 +247,7 @@ export default function ProductDetailPage() {
   useEffect(() => {
     console.log('displayImage:', displayImage);
   }, [displayImage]);
+
 
 
   
@@ -272,6 +282,17 @@ export default function ProductDetailPage() {
     }
   };
 
+
+  // msg 
+  useEffect(() => {
+    if (!msg) return;
+
+    const timer = setTimeout(() => {
+      setMsg('');
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [msg]);
   
   const handleColorClick = (color: string) => {
     setSelectedColor(color);
@@ -352,35 +373,96 @@ export default function ProductDetailPage() {
   //   }
   // };
   const handleTryOnRequest = async () => {
+    // try {
+    //   // const tryOnRes = await fetch(`${API}/try-on-request`, {
+    //   //   method: 'POST',
+    //   //   headers: {
+    //   //     'Content-Type': 'application/json',
+    //   //   },
+    //   //   body: JSON.stringify({
+    //   //     model: product?.model,
+    //   //     robot_name: 'shoppy1',
+    //   //   }),
+    //   // });
+
+    //   // const tryOnData = await tryOnRes.json();
+    //   // console.log('try-on:', tryOnData);
+
+    //   // if (!tryOnData.success) {
+    //   //   alert('시착 요청 접수 실패');
+    //   //   return;
+    //   // }
+    //   return //임시로 막는다. 
+
+    //   setMsg(
+    //     `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${selectedColor ?? '-'} / 좌석 ${seat}`
+    //   );
+
+    // } catch (error) {
+    //   console.error(error);
+    //   setMsg('요청 중 오류 발생');
+    // }
+
+
+      
     try {
-      // const tryOnRes = await fetch(`${API}/try-on-request`, {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({
-      //     model: product?.model,
-      //     robot_name: 'shoppy1',
-      //   }),
-      // });
+      const selectedItem = inventory.find((item) => {
+        if (selectedSize !== null && selectedColor) {
+          return item.size === selectedSize && item.color === selectedColor;
+        }
 
-      // const tryOnData = await tryOnRes.json();
-      // console.log('try-on:', tryOnData);
+        if (selectedSize !== null) {
+          return item.size === selectedSize;
+        }
 
-      // if (!tryOnData.success) {
-      //   alert('시착 요청 접수 실패');
-      //   return;
-      // }
-      return //임시로 막는다. 
+        if (selectedColor) {
+          return item.color === selectedColor;
+        }
 
-      setMsg(
-        `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${selectedColor ?? '-'} / 좌석 ${seat}`
-      );
+        return false;
+      });
 
+      if (!selectedItem?.product_id) {
+        setMsg('사이즈와 색상을 선택해주세요.');
+        return;
+      }
+      const seatId = `seat_${seat}`;
+      
+      setTryOnPopupOpen(true);
+      setTryOnLoading(true);
+
+      const tryOnRes = await fetch(`${API}/tryon/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          product_id: selectedItem.product_id,
+          seat_id: seatId,
+        }),
+      });
+
+      const tryOnData = await tryOnRes.json();
+      console.log('try-on:', tryOnData);
+
+      if (!tryOnRes.ok || !tryOnData.success) {
+        setMsg('시착 요청 접수 실패');
+          setTryOnPopupOpen(false);
+          setFailModalOpen(true); // 👈 여기
+        return;
+      }
+
+      setTryOnPopupOpen(true);
     } catch (error) {
       console.error(error);
       setMsg('요청 중 오류 발생');
+      setTryOnPopupOpen(false);
+      setFailModalOpen(true); // 👈 여기
+    }finally {
+      setTryOnLoading(false);
     }
+
+
   };
 
   // 신발 찾기 외부함수 
@@ -562,7 +644,10 @@ export default function ProductDetailPage() {
   return (
     <div className="page-container">
 
-      <ArrivalModal open={isArriveOpen} onClose={() => setIsArriveOpen(false)} />
+      {/* <TryOnModal open={tryOnPopupOpen} onClose={() => setTryOnPopupOpen(false)} /> */}
+      {/* <TryOnModal open={tryOnPopupOpen} onClose={() => setTryOnPopupOpen(false)} image={displayImage} productName={product?.name} */}
+      <ArrivalModal open={failModalOpen} onClose={() => setFailModalOpen(false)} type="fail" />
+      {/* <ArrivalModal open={isArriveOpen} onClose={() => setIsArriveOpen(false)} /> */}
       {/* ✅ 여기 넣기 (main-card 위) */}
       {isFindDialogOpen && (
         <div className="dialog-overlay">
