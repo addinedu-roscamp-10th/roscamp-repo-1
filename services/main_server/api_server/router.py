@@ -17,6 +17,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.moosinsa_service import MoosinsaService
 from api_server.dependencies import set_service, get_service
@@ -80,6 +81,14 @@ async def lifespan(app: FastAPI):
 # ══════════════════════════════════════════════════════════════
 
 app = FastAPI(title="Moosinsa API Server", lifespan=lifespan)
+
+app = FastAPI(title="Moosinsa API Server", lifespan=lifespan)
+
+app.mount(
+    "/shoes_images",
+    StaticFiles(directory="/home/addinedu/shoes_images"),
+    name="shoes_images"
+)
 
 app.add_middleware(
     CORSMiddleware,
