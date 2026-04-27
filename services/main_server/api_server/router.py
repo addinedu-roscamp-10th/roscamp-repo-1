@@ -82,8 +82,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Moosinsa API Server", lifespan=lifespan)
 
-app = FastAPI(title="Moosinsa API Server", lifespan=lifespan)
-
 app.mount(
     "/shoes_images",
     StaticFiles(directory="/home/addinedu/shoes_images"),
