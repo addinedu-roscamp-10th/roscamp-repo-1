@@ -89,69 +89,138 @@ export default function ProductDetailPage() {
   const [isArriveOpen, setIsArriveOpen] = useState(false);
 
 
+useEffect(() => {
+  if (!API) return;
+
+  let ws: WebSocket | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let closedByCleanup = false;
+
+  const connect = () => {
+    const wsBaseUrl = API.replace('http://', 'ws://').replace('https://', 'wss://');
+
+    ws = new WebSocket(`${wsBaseUrl}/ws/amr`);
+
+    ws.onopen = () => {
+      console.log('AMR ws connected');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === 'AMR_ARRIVE') {
+        setTryOnPopupOpen(false);
+        setIsArriveOpen(true);
+      }
+    };
+
+    ws.onerror = () => {
+      ws?.close();
+    };
+
+    ws.onclose = () => {
+      console.log('AMR ws closed');
+
+      if (!closedByCleanup) {
+        retryTimer = setTimeout(connect, 1000);
+      }
+    };
+  };
+
+  connect();
+
+  return () => {
+    closedByCleanup = true;
+
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+    }
+
+    ws?.close();
+  };
+}, []);
+
+
+  // //seat info 
+  // useEffect(() => {
+  //   const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/seat`);
+
+  //   ws.onopen = () => {
+  //     console.log('seat ws connected');
+  //   };
+
+  //   ws.onmessage = (event) => {
+  //     const data = JSON.parse(event.data);
+
+  //     if (data.type === 'SEAT_UPDATE') {
+  //       console.log('seat update:', data.data);
+  //       setSeatStatus(data.data);
+  //     }
+  //   };
+
+  //   ws.onerror = (e) => {
+  //     console.log('seat ws error', e);
+  //   };
+
+  //   ws.onclose = () => {
+  //     console.log('seat ws closed');
+  //   };
+
+  //   return () => ws.close();
+  // }, []);
+
+  // seat info
   useEffect(() => {
     if (!API) return;
 
-    let ws: WebSocket;
-    let retryTimer: any;
+    let ws: WebSocket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let closedByCleanup = false;
 
     const connect = () => {
       const wsBaseUrl = API.replace('http://', 'ws://').replace('https://', 'wss://');
 
-      ws = new WebSocket(`${wsBaseUrl}/ws/amr`);
+      ws = new WebSocket(`${wsBaseUrl}/ws/seat`);
 
       ws.onopen = () => {
-        console.log('AMR 연결됨');
+        console.log('seat ws connected:', `${wsBaseUrl}/ws/seat`);
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        console.log('seat ws message:', data);
 
-        if (data.type === 'AMR_ARRIVE') {
-          setTryOnPopupOpen(false);
-          setIsArriveOpen(true);
+        if (data.type === 'SEAT_UPDATE') {
+          setSeatStatus(data.data);
         }
       };
 
-      ws.onclose = () => {
-        console.log('AMR 끊김 → 재연결');
-        retryTimer = setTimeout(connect, 1000);
+      ws.onerror = (e) => {
+        console.log('seat ws error:', e);
+        ws?.close();
       };
 
-      ws.onerror = () => {
-        ws.close();
+      ws.onclose = () => {
+        console.log('seat ws closed');
+
+        if (!closedByCleanup) {
+          retryTimer = setTimeout(connect, 1000);
+        }
       };
     };
 
     connect();
 
     return () => {
-      ws?.close();
-      clearTimeout(retryTimer);
-    };
-  }, []);
+      closedByCleanup = true;
 
-
-  //seat info 
-  useEffect(() => {
-    const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/seat`);
-
-    ws.onopen = () => {
-      console.log('seat ws connected');
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === 'SEAT') {
-        console.log('seat update:', data.data);
-        setSeatStatus(data.data);
+      if (retryTimer) {
+        clearTimeout(retryTimer);
       }
+
+      ws?.close();
     };
-
-    return () => ws.close();
   }, []);
-
 
   useEffect(() => {
     const id = getShoeId();
@@ -748,7 +817,7 @@ export default function ProductDetailPage() {
 
               <div className="seat-zone-label">시착 구역</div>
 
-              <div className="seat-area">
+              {/* <div className="seat-area">
                 {seats.map((s) => (
                   <button
                     key={s}
@@ -757,7 +826,7 @@ export default function ProductDetailPage() {
                   >
                     {s}
                   </button>
-                ))}
+                ))} */}
                 {/* {seats.map((s, idx) => {
                   const occupied = seatStatus[idx] === 1;
 
@@ -775,6 +844,33 @@ export default function ProductDetailPage() {
                     </button>
                   );
                 })} */}
+              {/* </div> */}
+
+              <div className="seat-area">
+                {[1, 4, 2, 3].map((s) => {
+                  const idx = seats.indexOf(s); 
+                  const occupied = seatStatus[idx] === 1;
+
+                  return (
+                    <button
+                      key={s}
+                      disabled={occupied}
+                      className={`seat-btn 
+                        ${seat === s ? 'active' : ''} 
+                        ${occupied ? 'occupied' : ''}
+                      `}
+                      onClick={() => {
+                        if (!occupied) setSeat(s);
+                      }}
+                    >
+                      <span className="seat-number">{s}</span>
+
+                      {occupied && (
+                        <span className="seat-label">사용중</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="seat-labels">
