@@ -91,8 +91,8 @@ logger = logging.getLogger("moosinsa_service")
 
 # ── YOLO 결과 수신 서버 (TCP 수신) ────────────────────────────
 # YOLO 서버 → TCP → moosinsa_service
-YOLO_RESULT_LISTEN_IP   = "192.168.1.11"
-YOLO_RESULT_LISTEN_PORT = 8008  # tcp_main_ai.py 의 MAIN_SERVER_PORT 와 일치
+# YOLO_RESULT_LISTEN_IP   = "192.168.1.11"          #.env로 이동 
+# YOLO_RESULT_LISTEN_PORT = 8008  # tcp_main_ai.py 의 MAIN_SERVER_PORT 와 일치
 
 # ── YOLO UDP 청크 헤더 ────────────────────────────────────────
 # tcp_main_ai.py 의 HEADER_FORMAT = "!HIHH" 와 동일해야 함
@@ -103,8 +103,8 @@ YOLO_CHUNK_SIZE    = 60000      # UDP 패킷당 최대 페이로드 크기 (byte
 # ── PySide6 관제 UI 포워딩 (YOLO 결과 미러링) ─────────────────
 # YOLOResultServer 가 결과를 수신하면 이 주소로도 동일 결과를 전달한다.
 # PySide6 GUI 의 TCP 수신 포트와 일치시킬 것.
-CAM_UI_IP   = "192.168.1.11"                     #.env로 이동 
-CAM_UI_PORT = 8009
+# CAM_UI_IP   = "192.168.1.11"                     #.env로 이동 
+# CAM_UI_PORT = 8009
 
 # TODO: 컴포넌트 추가 시 HOST/PORT 상수 여기에 추가
 # DB_HOST  = "localhost"
@@ -113,7 +113,7 @@ CAM_UI_PORT = 8009
 
 
 # ══════════════════════════════════════════════════════════════
-# Pydantic 요청/응답 모델
+# Pydantic 요청 모델
 # ══════════════════════════════════════════════════════════════
 
 class SearchRequest(BaseModel):
@@ -121,6 +121,15 @@ class SearchRequest(BaseModel):
     keyword: str   
     accumulated_tags: dict[str, list[str]] = Field(default_factory=dict)
 
+
+class TryOnRequest(BaseModel):
+    product_id: str
+    seat_id: str    # "seat_1" | "seat_2" | "seat_3"
+                    # robot_id 는 task manager 가 내부에서 선택한다
+
+# ══════════════════════════════════════════════════════════════
+# Pydantic 응답 모델
+# ══════════════════════════════════════════════════════════════                   
 
 class ShoeItem(BaseModel):
     """M_LLM 이 반환하는 개별 상품 정보"""
@@ -370,33 +379,44 @@ class YOLOResultServer:
             except Exception as e:
                 logger.error(f"YOLOResultServer accept 오류: {e}")
 
+    
     def _handle_conn(self, conn: socket.socket, addr):
         try:
             raw_len = self._recv_exact(conn, 4)
             if not raw_len:
                 return
-            length   = struct.unpack("!I", raw_len)[0]
+            length  = struct.unpack("!I", raw_len)[0]
             raw_data = self._recv_exact(conn, length)
             if not raw_data:
                 return
 
             result   = json.loads(raw_data.decode("utf-8"))
-            msg_type = result.get("type")  # ← 선언 추가
+            msg_type = result.get("type") or ("seat_status" if "seats" in result else None)
 
+            # if msg_type == "seat_status":
+            #     with self._lock:
+            #             self.latest_seat_status = result.get("seats")
+            #     logger.info(f"[좌석 상태 수신] from={addr} seats={result.get('seats')}")
+            
             if msg_type == "seat_status":
+                seats = result.get("seats")
+
                 with self._lock:
-                    self.latest_seat_status = result.get("seats")
-                logger.info(
-                    f"[좌석 상태 수신] from={addr} "
-                    f"seats={result.get('seats')} "
-                    f"timestamp={result.get('timestamp')}"
-                )
-            else:  # YOLO 결과
+                    self.latest_seat_status = seats
+
+                logger.info(f"[좌석 상태 수신] from={addr} seats={seats}")
+
+                if _main_loop is not None:
+                    asyncio.run_coroutine_threadsafe(
+                        broadcast_seat_status(seats),
+                        _main_loop
+                    )
+
+            else:
                 with self._lock:
                     self.latest_result = result
                 logger.info(
                     f"[YOLO 결과 수신] from={addr} "
-                    f"robot_id={result.get('robot_id')} "
                     f"frame_id={result.get('frame_id')} "
                     f"person_count={result.get('person_count')} "
                     f"process_ms={result.get('process_ms')}ms"
@@ -415,7 +435,7 @@ class YOLOResultServer:
         """
         try:
             fwd_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            fwd_sock.connect((CAM_UI_IP, CAM_UI_PORT))
+            fwd_sock.connect((os.getenv("CAM_UI_IP"), int(os.getenv("CAM_UI_PORT"))))
             fwd_sock.sendall(struct.pack("!I", len(raw_data)) + raw_data)
             fwd_sock.close()
         except Exception as e:
@@ -563,7 +583,7 @@ class CameraUDPServer:
     def _forward_to_cam_ui(self, raw_data: bytes):
         try:
             fwd_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            fwd_sock.connect((CAM_UI_IP, CAM_UI_PORT))
+            fwd_sock.connect((os.getenv("CAM_UI_IP"), int(os.getenv("CAM_UI_PORT"))))
             fwd_sock.sendall(struct.pack("!I", len(raw_data)) + raw_data)
             fwd_sock.close()
         except Exception as e:
@@ -732,7 +752,7 @@ class ScenarioOrchestrator:
 # ══════════════════════════════════════════════════════════════
 
 _orchestrator: Optional[ScenarioOrchestrator] = None
-
+_yolo_result_server: Optional[YOLOResultServer] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -741,7 +761,9 @@ async def lifespan(app: FastAPI):
       시작: 각 클라이언트 인스턴스 생성 및 health check → ScenarioOrchestrator 주입
       종료: 로그 출력 (필요 시 리소스 정리 추가)
     """
-    global _orchestrator
+    global _orchestrator, _main_loop
+
+    _main_loop = asyncio.get_running_loop()
     logger.info("Moosinsa Service 시작...")
 
     # M_LLM 클라이언트 초기화
@@ -756,22 +778,23 @@ async def lifespan(app: FastAPI):
 
     # YOLO 결과 수신 서버 시작 (별도 데몬 스레드)
     yolo_result_server = YOLOResultServer(
-        listen_ip=YOLO_RESULT_LISTEN_IP,
-        listen_port=YOLO_RESULT_LISTEN_PORT,
+        listen_ip=os.getenv('YOLO_RESULT_LISTEN_IP'),
+        listen_port= int(os.getenv('YOLO_RESULT_LISTEN_PORT')),
     )
     yolo_result_server.start()
+    _yolo_result_server = yolo_result_server
 
     # YOLO 클라이언트 초기화
     yolo_client = YOLOClient(
         server_ip = os.getenv("YOLO_SERVER_IP"),
-        server_port= os.getenv("YOLO_SERVER_PORT"),
+        server_port= int(os.getenv("YOLO_SERVER_PORT")),
         result_server=yolo_result_server,
     )
 
     # Top View Camera 데이터 수신 서버
     camera_udp_server = CameraUDPServer(
-        listen_ip="0.0.0.0",
-        listen_port=7007
+        listen_ip= os.getenv('CAM_LISTEN_IP'),
+        listen_port= int(os.getenv('CAM_LISTEN_PORT'))
     )
     camera_udp_server.start()
 
@@ -815,18 +838,113 @@ app.add_middleware(
 )
 
 
-# SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
-# app.mount(
-#     "/shoes_images",
-#     StaticFiles(directory=str(SHOES_IMAGE_DIR)),
-#     name="shoes_images",
-# )
+SHOES_IMAGE_DIR = Path("~/shoes_images").expanduser()
+app.mount(
+    "/shoes_images",
+    StaticFiles(directory=str(SHOES_IMAGE_DIR)),
+    name="shoes_images",
+)
 
 def get_orchestrator() -> ScenarioOrchestrator:
     """오케스트레이터 의존성 주입 헬퍼. 초기화 전 요청 시 503 반환."""
     if _orchestrator is None:
         raise HTTPException(status_code=503, detail="서비스 초기화 중입니다.")
     return _orchestrator
+
+# ─────────────────────────────
+# WebSocket: SEAT & AMR
+# ─────────────────────────────
+# WebSocket 클라이언트 목록 (AMR 실시간 스트림용)
+_ws_clients: list[WebSocket] = []
+
+# WebSocket 클라이언트 목록
+_seat_clients: list[WebSocket] = []
+_main_loop = None
+
+# @app.websocket("/ws/seat")
+# async def ws_seat(websocket: WebSocket):
+#     await websocket.accept()
+#     _seat_clients.append(websocket)
+
+#     print("seat websocket connected:", len(_seat_clients))
+
+#     try:
+#         while True:
+#             await websocket.receive_text()
+#     except WebSocketDisconnect:
+#         if websocket in _seat_clients:
+#             _seat_clients.remove(websocket)
+#         print("seat websocket disconnected:", len(_seat_clients))
+
+# @app.websocket("/ws/amr")
+# async def ws_amr(websocket: WebSocket):
+#     await websocket.accept()
+#     _ws_clients.append(websocket)
+
+#     print("AMR websocket connected:", len(_ws_clients))
+
+#     try:
+#         while True:
+#             await websocket.receive_text()
+#     except WebSocketDisconnect:
+#         if websocket in _ws_clients:
+#             _ws_clients.remove(websocket)
+
+#         print("AMR websocket disconnected:", len(_ws_clients))
+
+@app.websocket("/ws/seat")
+async def ws_seat(websocket: WebSocket):
+    await websocket.accept()
+    _seat_clients.append(websocket)
+
+    print("seat websocket connected:", len(_seat_clients))
+
+    try:
+        while True:
+            await asyncio.sleep(30)
+            await websocket.send_json({"type": "PING"})
+    except Exception:
+        if websocket in _seat_clients:
+            _seat_clients.remove(websocket)
+
+        print("seat websocket disconnected:", len(_seat_clients))
+
+
+@app.websocket("/ws/amr")
+async def ws_amr(websocket: WebSocket):
+    await websocket.accept()
+    _ws_clients.append(websocket)
+
+    print("AMR websocket connected:", len(_ws_clients))
+
+    try:
+        while True:
+            await asyncio.sleep(30)
+            await websocket.send_json({"type": "PING"})
+    except Exception:
+        if websocket in _ws_clients:
+            _ws_clients.remove(websocket)
+
+        print("AMR websocket disconnected:", len(_ws_clients))
+
+
+async def broadcast_seat_status(seats):
+    message = {
+        "type": "SEAT_UPDATE",
+        "data": seats
+    }
+
+    disconnected = []
+
+    for client in _seat_clients[:]:
+        try:
+            await client.send_json(message)
+        except Exception:
+            disconnected.append(client)
+
+    for client in disconnected:
+        if client in _seat_clients:
+            _seat_clients.remove(client)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -856,7 +974,7 @@ async def endpoint_health():
         "status"          : "ok",
         "mllm_connected"  : mllm_ok,
         "mllm_host"       : f"{os.getenv("MLLM_HOST")}:{os.getenv("MLLM_PORT")}",
-        "yolo_result_port": YOLO_RESULT_LISTEN_PORT,
+        "yolo_result_port": os.getenv('YOLO_RESULT_LISTEN_PORT'),
         "yolo_server"     : f"{os.getenv("YOLO_SERVER_IP")}:{os.getenv("YOLO_SERVER_PORT")}",
     }
 
@@ -902,7 +1020,9 @@ async def endpoint_search(req: SearchRequest):
 
     return result
 
-
+# ══════════════════════════════════════════════════════════════
+# 신발 검색 shoe_id from shoes 
+# ══════════════════════════════════════════════════════════════
 @app.post("/find_shoe")
 def find_shoe(
     request: Request,
@@ -920,7 +1040,9 @@ def find_shoe(
 
     return get_shoe_information_by_shoe_id(shoe_id)
 
-
+# ══════════════════════════════════════════════════════════════
+# 신발 정보 검색 shoe_id from shoe_inventory
+# ══════════════════════════════════════════════════════════════
 @app.post("/find_shoe_information")
 def find_shoe_info(
     request: Request,
@@ -1044,17 +1166,53 @@ async def ws_amr(ws: WebSocket):
     except Exception as e:
         logger.error(f"[/ws/amr] error: {e}")
 
-# === 시착 시나리오 임시 코드 끝 ===========================================
-# TODO(원본 보존): 아래 옛 시그니처는 참고용. DB 통합 시 제거 가능.
-# @app.post("/tryon/request")
-# async def endpoint_tryon_request(product_id: str, robot_id: str = "sshopy1"):
-#     ok = fleet.start_delivery(robot_id)  # ← 옛날엔 그냥 배달 시나리오로 돌렸음
-#     ...
-#
-# @app.post("/admin/estop")
-# async def endpoint_emergency_stop():
-#     """PySide6 관제 UI → 비상정지 명령 전파"""
-#     ...
+# ══════════════════════════════════════════════════════════════
+# amr 도착
+# ══════════════════════════════════════════════════════════════
+@app.post("/amr/arrive")
+async def endpoint_amr_arrive():
+    # """
+    # AMR 도착 이벤트 수신.
+    # 연결된 모든 WebSocket 클라이언트(/ws/amr)에 도착 메시지를 브로드캐스트한다.
+    # """
+    # message = {"type": "AMR_ARRIVE", "result": "ok", "message": "AMR 도착 완료"}
+    # disconnected = []
+    # for client in _ws_clients:
+    #     try:
+    #         await client.send_json(message)
+    #     except Exception:
+    #         disconnected.append(client)
+    # for client in disconnected:
+    #     if client in _ws_clients:
+    #         _ws_clients.remove(client)
+    # return {
+    #     "result": "ok",
+    #     "clients": len(_ws_clients)
+    # }   
+    message = {
+        "type": "AMR_ARRIVE",
+        "result": "ok",
+        "message": "AMR 도착 완료"
+    }
+
+    disconnected = []
+
+    for client in _ws_clients[:]:
+        try:
+            await client.send_json(message)
+            print("AMR message sent")
+        except Exception as e:
+            print("AMR send error:", e)
+            disconnected.append(client)
+
+    for client in disconnected:
+        if client in _ws_clients:
+            _ws_clients.remove(client)
+
+    return {
+        "result": "ok",
+        "clients": len(_ws_clients)
+    }
 
 
 # ══════════════════════════════════════════════════════════════
