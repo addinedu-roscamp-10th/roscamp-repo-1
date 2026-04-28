@@ -1,18 +1,27 @@
 import cv2
 import os
 import json
+import socket
+import struct
+import time
 from ultralytics import YOLO
 
 # =========================
 # 설정
 # =========================
-CAMERA_ID = "/dev/video2"
+CAMERA_ID = "/dev/video0"
 MODEL_PATH = "/home/addinedu/detection/pose_detection/seat_detection/runs/detect/train/weights/best.pt"
 ROI_SAVE_PATH = "/home/addinedu/detection/pose_detection/seat_detection/seat_roi_config.json"
 
 CONF_THRES = 0.5
 IMG_SIZE = 640
-ROI_SIZE = 50   # 고정: 정사각형 크기 50
+ROI_SIZE = 100   # 고정: 정사각형 크기 50
+
+# =========================
+# TCP 전송 설정 (cv_server.py 동일 프로토콜)
+# =========================
+MAIN_SERVER_IP = "192.168.1.11"   # 메인 서버 IP
+MAIN_SERVER_PORT = 8008          
 
 WINDOW_NAME = "ROI-only Seat Detection"
 
@@ -33,6 +42,40 @@ ROI_LOCKS = {
 }
 
 SELECTED_SEAT = 1
+
+
+# =========================
+# TCP 전송 (cv_server.py 와 동일 프로토콜)
+# =========================
+def send_tcp_message(host, port, payload_bytes):
+    """[4바이트 길이헤더] + [JSON 바이트] 형식으로 TCP 전송"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(2.0)
+        sock.connect((host, port))
+        sock.sendall(struct.pack("!I", len(payload_bytes)) + payload_bytes)
+    except Exception as e:
+        print(f"[TCP 전송 실패] {e}")
+    finally:
+        sock.close()
+
+
+def build_seat_payload(seat_statuses: dict) -> bytes:
+    """
+    seat_statuses: {1: "OCCUPIED", 2: "EMPTY", 4: "EMPTY"}
+    → {"type": "seat_status", "seats": [1, 0, 0, 0]}  (index 0 = seat 1)
+    UNKNOWN 상태가 하나라도 있으면 None 반환 (전송 스킵)
+    """
+    for seat_id in [1, 2, 3, 4]:
+        if seat_statuses.get(seat_id) == "UNKNOWN":
+            return None
+
+    data = {
+        "type":  "seat_status",
+        "seats": [1 if seat_statuses[i] == "OCCUPIED" else 0 for i in [1, 2, 3, 4]],
+        "timestamp": time.time(),
+    }
+    return json.dumps(data).encode("utf-8")
 
 
 # =========================
@@ -251,6 +294,18 @@ def main():
             for idx, (state_text, score, cls_name) in enumerate(current_statuses, start=1):
                 print(f"Seat {idx}: {state_text:8s} | class={cls_name:15s} | conf={score:.2f}")
             prev_statuses = simple_states
+
+            # 상태 변화 시 moosinsa_service로 TCP 전송
+            seat_statuses = {
+                seat_id: current_statuses[seat_id - 1][0]
+                for seat_id in [1, 2, 3, 4]
+            }
+            payload = build_seat_payload(seat_statuses)
+            if payload is not None:
+                send_tcp_message(MAIN_SERVER_IP, MAIN_SERVER_PORT, payload)
+                print(f"[TCP 전송] seats={[seat_statuses[i] for i in [1,2,3,4]]}")
+            else:
+                print("[TCP 전송 스킵] UNKNOWN 좌석 포함")
 
         guide1 = f"Selected Seat: {state['selected_seat']} | ROI Size: {ROI_SIZE}x{ROI_SIZE}"
         guide2 = "Keys: 1-4 select | click move | f lock/unlock | s save | l load | q quit"
