@@ -7,8 +7,8 @@ from ultralytics import YOLO
 # 설정
 # =========================
 CAMERA_ID = "/dev/video2"
-MODEL_PATH = "/home/addinedu/main_team_1/roscamp-repo-1/services/ai_server/vision/tvc/seat_detection/models/best.pt"
-ROI_SAVE_PATH = "/home/addinedu/detection/pose_detection/seat_detection/seat_roi_config.json"
+MODEL_PATH = "/home/team1/roscamp-repo-1/services/ai_server/vision/tvc/seat_detection/models/best.pt"
+ROI_SAVE_PATH = "/home/team1/roscamp-repo-1/services/ai_server/vision/tvc/seat_detection/seat_roi_config.json"
 
 CONF_THRES = 0.5
 IMG_SIZE = 640

@@ -102,9 +102,9 @@ YOLO_CHUNK_SIZE    = 60000      # UDP 패킷당 최대 페이로드 크기 (byte
 # CAM_UI_PORT = 8009
 
 # TODO: 컴포넌트 추가 시 HOST/PORT 상수 여기에 추가
-# DB_HOST  = "localhost"
-# DB_PORT  = 3306
-# DB_NAME  = "MSS_DB"
+DB_HOST  = "localhost"
+DB_PORT  = 3306
+DB_NAME  = "MSS_DB"
 
 
 # ══════════════════════════════════════════════════════════════
