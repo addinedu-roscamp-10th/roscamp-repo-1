@@ -66,13 +66,13 @@ def get_robots():
 @app.post("/robots/{robot_id}/cmd_vel")
 def cmd_vel(robot_id: str, cmd: MoveCmd):
     ok = fleet.cmd_vel(robot_id, cmd.linear_x, cmd.angular_z)
-    return {"ok": ok, "robot_id": robot_id, "cmd": cmd.model_dump()}
+    return {"ok": ok, "robot_id": robot_id, "cmd": cmd.dict()}
 
 
 @app.post("/robots/{robot_id}/goal_pose")
 def goal_pose(robot_id: str, goal: GoalPose):
     ok = fleet.goal_pose(robot_id, goal.x, goal.y, goal.theta)
-    return {"ok": ok, "robot_id": robot_id, "goal": goal.model_dump()}
+    return {"ok": ok, "robot_id": robot_id, "goal": goal.dict()}
 
 
 @app.post("/robots/{robot_id}/trigger_work")
@@ -119,6 +119,51 @@ def delivery_status(robot_id: str):
                 "status": labels[stage] if stage is not None else "대기 중",
             }
     return {"robot_id": robot_id, "delivery_stage": None, "status": "알 수 없음"}
+
+
+# ── 시착 시나리오 (Scene 2) ───────────────────────────────────────────────────
+class TryonStartCmd(BaseModel):
+    seat_id: int
+    product_id: str = "demo-product"
+    color: str | None = None
+    size: str | None = None
+
+
+@app.post("/tryon/start")
+def tryon_start(robot_id: str = "sshopy2", cmd: TryonStartCmd = None):
+    """
+    시착 시나리오 시작 (admin_ui 시뮬레이션용).
+    moosinsa_service.py의 /tryon/request 와 동일 로직 호출 — 양쪽 모두 fleet.start_tryon() 사용.
+    """
+    if cmd is None:
+        cmd = TryonStartCmd(seat_id=1)
+    ok, msg = fleet.start_tryon(
+        robot_id=robot_id,
+        seat_id=cmd.seat_id,
+        product_id=cmd.product_id,
+        color=cmd.color,
+        size=cmd.size,
+    )
+    return {"ok": ok, "message": msg, "robot_id": robot_id, "seat_id": cmd.seat_id}
+
+
+@app.post("/tryon/cancel")
+def tryon_cancel(robot_id: str = "sshopy2"):
+    ok = fleet.cancel_tryon(robot_id)
+    return {"ok": ok, "robot_id": robot_id}
+
+
+@app.post("/tryon/pickup_complete")
+def tryon_pickup_complete(robot_id: str = "sshopy2"):
+    """고객 수령 완료 (TC 2-19) — 회수존 → 홈 복귀 트리거."""
+    ok, msg = fleet.complete_pickup(robot_id)
+    return {"ok": ok, "message": msg, "robot_id": robot_id}
+
+
+@app.get("/tryon/seats")
+def tryon_seats():
+    """현재 좌석 점유 상태 (in-memory)."""
+    return {"seats": fleet.get_seat_occupancy()}
 
 
 @app.get("/map/image")

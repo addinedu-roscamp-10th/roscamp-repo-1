@@ -100,27 +100,44 @@ function SmallBtn({ label, color = COLORS.blue, onClick }) {
   )
 }
 
-// ── Preset positions (odom 프레임 기준) ──────────────────────────────────────
+// ── Preset positions (map frame, 2026-04-24 기준) ────────────────────────────
+// quaternion (oz, ow) → theta(yaw)
+const qToTheta = (oz, ow) => 2 * Math.atan2(oz, ow)
 
-const HOME_POSE     = { x: 0.0,   y: 0.0,   theta: 0.0 }
-const WARE_JET_POSE = { x: 0.352, y: 0.488, theta: 1.670 }  // ware_jet 정위치 (map frame)
-const FRONT_POSE    = { x: 1.080, y: 0.456, theta: 1.485 }  // 매장(front_jet) 정위치 (map frame)
+const LOCATIONS = [
+  { key: 'home',      label: '🏠 홈',       x: 0.905, y: -0.006, oz:  0.230, ow: 0.973 },
+  { key: 'frontjet',  label: '📥 입고/회수',  x: 0.615, y:  0.487, oz:  0.730, ow: 0.684 },
+  { key: 'warejet',   label: '📦 창고',      x: 0.015, y:  0.246, oz:  0.003, ow: 1.000 },
+  { key: 'charging',  label: '🔋 충전',      x: 0.278, y:  0.642, oz: -0.720, ow: 0.694 },
+  { key: 'tryzone_1', label: '👕 시착 1',    x: 1.227, y:  0.105, oz:  0.731, ow: 0.682 },
+  { key: 'tryzone_2', label: '👕 시착 2',    x: 1.547, y:  0.257, oz:  1.000, ow: 0.031 },
+  { key: 'tryzone_3', label: '👕 시착 3',    x: 1.352, y:  0.563, oz: -0.744, ow: 0.668 },
+  { key: 'tryzone_4', label: '👕 시착 4',    x: 1.034, y:  0.384, oz:  0.005, ow: 1.000 },
+].map(l => ({ ...l, theta: qToTheta(l.oz, l.ow) }))
+
+const LOC = Object.fromEntries(LOCATIONS.map(l => [l.key, l]))
+
+// 배달 시나리오용 (key 호환 유지)
+const HOME_POSE     = LOC.home
+const WARE_JET_POSE = LOC.warejet
+const FRONT_POSE    = LOC.frontjet
 
 const DELIVERY_STAGES = [
-  { key: 'warehouse', label: '창고', ...WARE_JET_POSE },
-  { key: 'store',     label: '매장', ...FRONT_POSE },
-  { key: 'home',      label: '홈',   ...HOME_POSE },
+  { ...WARE_JET_POSE, key: 'warehouse', label: '창고' },
+  { ...FRONT_POSE,    key: 'store',     label: '매장' },
+  { ...HOME_POSE,     key: 'home',      label: '홈'  },
 ]
 const ARRIVAL_THRESH = 0.30  // metres
 
 // ── Pinky card ────────────────────────────────────────────────────────────────
 
 function PinkyCard({ robot, addLog }) {
-  const { robot_id, connected, battery, pose } = robot
+  const { robot_id, connected, battery, pose, tryon_stage, tryon_seat } = robot
   const [goalX, setGoalX] = useState(String(HOME_POSE.x))
   const [goalY, setGoalY] = useState(String(HOME_POSE.y))
   const [goalFb, setGoalFb] = useState('')
   const [deliveryIdx, setDeliveryIdx] = useState(null)
+  const [tryonSeatSel, setTryonSeatSel] = useState(1)   // 시나리오2 좌석 선택
   const goalSentAtRef  = useRef(0)
   const armWorkingRef  = useRef(false)   // arm 작동 중 → 도착 감지 차단
   const cancelledRef   = useRef(false)   // 취소 여부
@@ -270,19 +287,43 @@ function PinkyCard({ robot, addLog }) {
                 이동
               </button>
             </div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+              <select
+                defaultValue=""
+                onChange={e => {
+                  const loc = LOC[e.target.value]
+                  if (!loc) return
+                  setGoalX(String(loc.x))
+                  setGoalY(String(loc.y))
+                  sendGoal(loc.x, loc.y, loc.theta)
+                  e.target.value = ''  // reset so 같은 위치 재선택 가능
+                }}
+                style={{
+                  ...inputStyle, flex: 2, cursor: 'pointer',
+                  background: '#fff', minWidth: 0,
+                }}
+              >
+                <option value="" disabled>📍 위치 선택…</option>
+                {LOCATIONS.map(l => (
+                  <option key={l.key} value={l.key}>{l.label}</option>
+                ))}
+              </select>
               <button
-                onClick={() => { setGoalX(String(HOME_POSE.x)); setGoalY(String(HOME_POSE.y)); sendGoal(HOME_POSE.x, HOME_POSE.y, HOME_POSE.theta) }}
-                style={{ ...btnStyle, background: COLORS.green, flex: 1 }}
-              >🏠 홈</button>
-              <button
-                onClick={() => { setGoalX(String(FRONT_POSE.x)); setGoalY(String(FRONT_POSE.y)); sendGoal(FRONT_POSE.x, FRONT_POSE.y, FRONT_POSE.theta) }}
-                style={{ ...btnStyle, background: COLORS.blue, flex: 1 }}
-              >🏪 매장</button>
-              <button
-                onClick={() => { setGoalX(String(WARE_JET_POSE.x)); setGoalY(String(WARE_JET_POSE.y)); sendGoal(WARE_JET_POSE.x, WARE_JET_POSE.y, WARE_JET_POSE.theta) }}
-                style={{ ...btnStyle, background: COLORS.orange, flex: 1 }}
-              >📦 창고</button>
+                onClick={() => {
+                  // 1) Nav2 현재 goal 취소 — 현재 위치를 새 goal로 발행
+                  if (pose) postGoalPose(robot_id, pose.x, pose.y, 0)
+                  // 2) cmd_vel=0 으로 즉시 정지
+                  postCmdVel(robot_id, 0, 0)
+                  // 3) 진행 중인 배달 시나리오도 취소
+                  cancelledRef.current = true
+                  armWorkingRef.current = false
+                  setDeliveryIdx(null)
+                  addLog?.(`${robot_id} 이동 정지`, 'warn')
+                  setGoalFb('🛑 정지')
+                  setTimeout(() => setGoalFb(''), 2000)
+                }}
+                style={{ ...btnStyle, background: COLORS.red, flex: 1 }}
+              >🛑 정지</button>
             </div>
             {goalFb && (
               <div style={{ marginTop: 4, fontSize: 12, textAlign: 'center', color: COLORS.gray }}>
@@ -326,6 +367,72 @@ function PinkyCard({ robot, addLog }) {
               >
                 🚀 배달 시작 (창고 → 매장 → 홈)
               </button>
+            )}
+          </div>
+
+          {/* 시나리오 2 (시착) — TC 2-06/14/16/17/19/21 */}
+          <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 6 }}>
+              시나리오 2 (시착) {tryon_stage != null && <span style={{ color: COLORS.orange }}>● 진행 중 (stage {tryon_stage}{tryon_seat ? `, seat ${tryon_seat}` : ''})</span>}
+            </div>
+            {tryon_stage == null ? (
+              <div style={{ display: 'flex', gap: 4 }}>
+                <select
+                  value={tryonSeatSel}
+                  onChange={e => setTryonSeatSel(parseInt(e.target.value))}
+                  style={{ ...inputStyle, flex: 1, cursor: 'pointer', background: '#fff' }}
+                >
+                  {[1,2,3,4].map(n => <option key={n} value={n}>👕 좌석 {n}</option>)}
+                </select>
+                <button
+                  onClick={async () => {
+                    setGoalFb('...')
+                    try {
+                      const r = await fetch(`/tryon/start?robot_id=${robot_id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          seat_id: tryonSeatSel,
+                          product_id: 'admin-ui-demo',
+                          color: null, size: null,
+                        }),
+                      }).then(r => r.json())
+                      if (r.ok) {
+                        addLog?.(`${robot_id} 시착 시작 → 좌석 ${tryonSeatSel}`, 'info')
+                        setGoalFb('✓ 시착 시작')
+                      } else {
+                        addLog?.(`${robot_id} 시착 실패: ${r.message}`, 'err')
+                        setGoalFb(`✗ ${r.message}`)
+                      }
+                    } catch { setGoalFb('✗ 오류') }
+                    setTimeout(() => setGoalFb(''), 3000)
+                  }}
+                  style={{ ...btnStyle, background: COLORS.blue, flex: 2 }}
+                >🎫 시착 요청</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 4 }}>
+                {tryon_stage === 12 /* AT_TRYZONE */ && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await fetch(`/tryon/pickup_complete?robot_id=${robot_id}`, { method: 'POST' }).then(r => r.json())
+                        addLog?.(r.ok ? `${robot_id} 수령 완료 → 회수존 이동` : `수령완료 실패: ${r.message}`, r.ok ? 'ok' : 'err')
+                      } catch { addLog?.('수령완료 오류', 'err') }
+                    }}
+                    style={{ ...btnStyle, background: COLORS.green, flex: 1 }}
+                  >📦 수령 완료</button>
+                )}
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetch(`/tryon/cancel?robot_id=${robot_id}`, { method: 'POST' })
+                      addLog?.(`${robot_id} 시착 시나리오 중단`, 'warn')
+                    } catch { addLog?.('시착 중단 오류', 'err') }
+                  }}
+                  style={{ ...btnStyle, background: COLORS.red, flex: 1 }}
+                >🛑 시착 중단</button>
+              </div>
             )}
           </div>
         </>

@@ -351,37 +351,80 @@ export default function ProductDetailPage() {
   //     setMsg('요청 중 오류 발생');
   //   }
   // };
+  /* ============================================================
+   * === 시착 시나리오 (Scene 2) 임시 코드 — 담당자 인계용 ===
+   * 작성일: 2026-04-27
+   * 범위: TC 2-06 (모바일 시착 요청), TC 2-19 (수령 완료)
+   *
+   * 담당자가 할 일:
+   *   1. robot_id 하드코딩(sshopy2) → FMS에서 사용가능 로봇 자동 선택
+   *   2. product_id 변환: 현재 product.model 사용 → 정식 product_id 사용
+   *   3. WS 재연결 로직 추가 (현재 일회성)
+   *   4. 에러 응답 처리 강화 (HTTP 409 좌석사용중, 503 미연결 등)
+   *   5. 수령완료 후 페이지 전환 또는 후속 처리
+   *
+   * 동작:
+   *   - 시착 요청: POST {API}/tryon/request {product_id, color, size, seat_id, robot_id}
+   *   - 도착 감지: WS {API}/ws/amr → AMR_ARRIVE → ArrivalModal 자동 표시
+   *   - 수령 완료: ArrivalModal onClose에서 POST {API}/pickup/complete
+   * ============================================================ */
+  const TRYON_ROBOT_ID = 'sshopy2';   // 임시 하드코딩
+
   const handleTryOnRequest = async () => {
+    if (!API) {
+      setMsg('API_URL 미설정');
+      return;
+    }
+    if (!product) {
+      setMsg('상품 정보 없음');
+      return;
+    }
     try {
-      // const tryOnRes = await fetch(`${API}/try-on-request`, {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({
-      //     model: product?.model,
-      //     robot_name: 'shoppy1',
-      //   }),
-      // });
-
-      // const tryOnData = await tryOnRes.json();
-      // console.log('try-on:', tryOnData);
-
-      // if (!tryOnData.success) {
-      //   alert('시착 요청 접수 실패');
-      //   return;
-      // }
-      return //임시로 막는다. 
-
+      const res = await fetch(`${API}/tryon/request`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: String(product.model ?? ''),
+          color:      selectedColor ?? null,
+          size:       selectedSize != null ? String(selectedSize) : null,
+          seat_id:    seat,
+          robot_id:   TRYON_ROBOT_ID,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        setMsg(`시착 요청 실패 (${res.status}): ${text}`);
+        return;
+      }
       setMsg(
         `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${selectedColor ?? '-'} / 좌석 ${seat}`
       );
-
     } catch (error) {
       console.error(error);
-      setMsg('요청 중 오류 발생');
+      setMsg('시착 요청 중 오류 발생');
     }
   };
+
+  // 수령 완료 (ArrivalModal "수령 완료" 버튼 클릭 시)
+  const handlePickupComplete = async () => {
+    setIsArriveOpen(false);
+    if (!API) return;
+    try {
+      const res = await fetch(`${API}/pickup/complete?robot_id=${TRYON_ROBOT_ID}`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        setMsg(`수령 완료 처리 실패 (${res.status}): ${text}`);
+        return;
+      }
+      setMsg('수령 완료 — 로봇이 회수존으로 이동합니다');
+    } catch (error) {
+      console.error(error);
+      setMsg('수령 완료 요청 중 오류 발생');
+    }
+  };
+  /* === 시착 시나리오 임시 코드 끝 ============================================ */
 
   // 신발 찾기 외부함수 
   const handleFindShoeRequest = async (shoe_id: string = '') => {  
@@ -562,7 +605,7 @@ export default function ProductDetailPage() {
   return (
     <div className="page-container">
 
-      <ArrivalModal open={isArriveOpen} onClose={() => setIsArriveOpen(false)} />
+      <ArrivalModal open={isArriveOpen} onClose={handlePickupComplete} />
       {/* ✅ 여기 넣기 (main-card 위) */}
       {isFindDialogOpen && (
         <div className="dialog-overlay">
