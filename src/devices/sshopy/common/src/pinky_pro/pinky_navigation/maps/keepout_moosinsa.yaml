@@ -1,4 +1,4 @@
-image: moosinsa_map.pgm
+image: keepout_moosinsa.pgm
 mode: trinary
 resolution: 0.020
 origin: [-0.339, -0.205, 0]
