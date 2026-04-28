@@ -433,7 +433,7 @@ def get_recommendations(user_text, accumulated_tags, inventory):
 
         target_colors = accumulated_tags.get("colors", [])
         for color in target_colors:
-            if any(normalize_text(color) in normalize_text(col) for col in shoe["color"]):
+            if any(normalize_text(color) in normalize_text(col) for col in shoe["colors"]):
                 score += 20
 
         if score > 0 or target_model or (not any(accumulated_tags.values()) and not target_model):
