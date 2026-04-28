@@ -139,6 +139,7 @@ class ShoeItem(BaseModel):
     model: str = ""
     colors: list[str] = Field(default_factory=list)
     price: int = 0
+    stock: int = 0
     image_url: str = ""
     tags: str = ""
     score: float = 0.0
