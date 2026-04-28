@@ -25,7 +25,7 @@ TAG_SCHEMA = {
     "activity": ["러닝", "웨이트", "등산", "축구", "농구", "데이트", "출근", "일상", "격식", "캠핑", "물놀이"],
     "style": ["힙한", "무난한", "깔끔한", "화려한", "빈티지", "클래식", "귀여운", "레트로", "테크웨어", "고프코어", "스포티", "발레코어"],
     "feature": ["쿠션감", "발볼 넓음", "방수", "키높이", "가벼움", "통기성", "미끄럼 방지", "편안함", "내구성", "보온성"],
-    "color": ["white", "black", "gray", "grey", "red", "orange", "yellow", "green", "blue", "purple", "brown", "beige", "silver", "navy", "pink"],
+    "colors": ["white", "black", "gray", "grey", "red", "orange", "yellow", "green", "blue", "purple", "brown", "beige", "silver", "navy", "pink"],
     "brand": ["나이키", "아디다스", "뉴발란스", "반스", "컨버스", "아식스", "살로몬", "오니츠카타이거", "푸마", "미즈노", "킨", "호카", "닥터마틴", "어그", "리복"],
     "season_weather": ["봄/가을용", "여름용", "겨울용", "사계절용", "우천용"],
     "price": ["가성비", "일반", "프리미엄"],
@@ -33,7 +33,7 @@ TAG_SCHEMA = {
 }
 
 WEIGHTS = {
-    "activity": 5, "style": 3, "feature": 4, "color": 3,
+    "activity": 5, "style": 3, "feature": 4, "colors": 3,
     "brand": 5, "season_weather": 3, "price": 4, "target": 3
 }
 
@@ -249,7 +249,7 @@ def load_inventory_from_db():
                     "shoe_id": row.get("shoe_id"),
                     "brand": row.get("brand"),
                     "model": row.get("model"),
-                    "color": color_parsed,
+                    "colors": color_parsed,
                     "image_url": row.get("image_url"),
                     "price": int(row.get("price") or 0),
                     "tags": row.get("tags") or "",
@@ -349,7 +349,7 @@ def extract_brands(user_text):
 
 def score_shoe(shoe, accumulated_tags, target_model, mentioned_brands, user_text):
     score = 0
-    color_str = color_list_to_text(shoe["color"])
+    color_str = color_list_to_text(shoe["colors"])
     db_str = f"{shoe['brand']} {shoe['model']} {color_str} {shoe['tags']}".lower().replace(" ", "")
 
     for field, vals in accumulated_tags.items():
@@ -378,7 +378,7 @@ def score_shoe(shoe, accumulated_tags, target_model, mentioned_brands, user_text
 
 
 def match_all_filters(shoe, accumulated_tags):
-    color_str = color_list_to_text(shoe["color"])
+    color_str = color_list_to_text(shoe["colors"])
     db_str = f"{shoe['brand']} {shoe['model']} {color_str} {shoe['tags']}".lower().replace(" ", "")
 
     for field, vals in accumulated_tags.items():
@@ -406,7 +406,7 @@ def get_recommendations(user_text, accumulated_tags, inventory):
     ranked = []
     for shoe in candidates:
         score = 0
-        color_str = color_list_to_text(shoe["color"])
+        color_str = color_list_to_text(shoe["colors"])
         db_str = f"{shoe['brand']} {shoe['model']} {color_str} {shoe['tags']}".lower().replace(" ", "")
 
         for field, vals in accumulated_tags.items():
@@ -431,9 +431,9 @@ def get_recommendations(user_text, accumulated_tags, inventory):
         if user_compact and user_compact in normalize_text(shoe["brand"]):
             score += 15
 
-        target_colors = accumulated_tags.get("color", [])
+        target_colors = accumulated_tags.get("colors", [])
         for color in target_colors:
-            if any(normalize_text(color) in normalize_text(col) for col in shoe["color"]):
+            if any(normalize_text(color) in normalize_text(col) for col in shoe["colors"]):
                 score += 20
 
         if score > 0 or target_model or (not any(accumulated_tags.values()) and not target_model):
@@ -442,7 +442,7 @@ def get_recommendations(user_text, accumulated_tags, inventory):
                 "shoe_id": shoe.get("shoe_id"),
                 "brand": shoe.get("brand"),
                 "model": shoe.get("model"),
-                "colors": shoe.get("color"),
+                "colors": shoe.get("colors"),
                 "price": int(shoe.get("price") or 0),
                 "stock": int(shoe.get("stock") or 0),
                 "image_url": shoe.get("image_url"),
