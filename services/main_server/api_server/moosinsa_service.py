@@ -48,7 +48,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -939,18 +939,116 @@ def find_shoe_info(
     return get_shoe_information_by_shoe_id_from_inventory(shoe_id)
 
 
-@app.post("/tryon/request")
-async def endpoint_tryon_request(product_id: str, robot_id: str = "sshopy1"):
-    ok = fleet.start_delivery(robot_id)
-    if not ok:
-        raise HTTPException(status_code=503, detail=f"{robot_id} 연결 안 됨")
-    logger.info(f"[tryon/request] 배달 시작 → robot={robot_id} product={product_id}")
-    return {"success": True, "robot_id": robot_id, "product_id": product_id}
+# ============================================================================
+# === 시착 시나리오 (Scene 2) 임시 코드 — 담당자 인계용 ===
+# 작성일: 2026-04-27
+# 범위: TC 2-06 (모바일 시착 요청), TC 2-19 (수령 완료)
+#
+# 담당자가 마이그레이션 시 할 일:
+#   1. seat 점유 검증을 in-memory(fleet._seat_occupied) → DB 기반(seat 테이블)으로 교체
+#   2. product 재고 검증 + 임시예약 트랜잭션 추가 (TC 2-08)
+#   3. color/size 정보를 DB에 기록 (현재 fleet 메모리에만 저장)
+#   4. 에러 코드 표준화 (HTTP 400/409/503 등)
+#   5. 요청 이력 로깅 (audit log)
+#
+# 현재 동작:
+#   - phone_ui → POST /tryon/request {product_id, color, size, seat_id, robot_id}
+#   - fleet.start_tryon() 호출 → Pinky가 창고→시착존 자동 이동
+#   - 시착존 도착 후 phone_ui가 /ws/robots WS push로 도착 감지
+#   - phone_ui → POST /pickup/complete → 회수존 → 홈 복귀
+# ============================================================================
 
-# TODO: 시나리오 확장 시 엔드포인트 추가
-# @app.post("/tryon/request", response_model=TryonResponse)
-# async def endpoint_tryon_request(req: TryonRequest):
-#     """시착 요청 → run_delivery_pipeline() 실행"""
+class _TryonReq(BaseModel):
+    product_id: str
+    color: Optional[str] = None
+    size: Optional[str] = None
+    seat_id: int = 1                    # 1~4 (시착존 번호)
+    robot_id: str = "sshopy2"           # 운용 가능한 핑키 ID
+
+@app.post("/tryon/request")
+async def endpoint_tryon_request(req: _TryonReq):
+    """
+    모바일 시착 요청 (TC 2-06).
+    body: {product_id, color, size, seat_id, robot_id}
+    """
+    ok, msg = fleet.start_tryon(
+        robot_id=req.robot_id,
+        seat_id=req.seat_id,
+        product_id=req.product_id,
+        color=req.color,
+        size=req.size,
+    )
+    if not ok:
+        # 좌석 사용중 / 로봇 작업중 / 미연결 등
+        raise HTTPException(status_code=409, detail=msg)
+    logger.info(
+        f"[tryon/request] 시착 시작 → robot={req.robot_id} seat={req.seat_id} "
+        f"product={req.product_id} color={req.color} size={req.size}"
+    )
+    return {
+        "success":    True,
+        "robot_id":   req.robot_id,
+        "seat_id":    req.seat_id,
+        "product_id": req.product_id,
+    }
+
+@app.post("/pickup/complete")
+async def endpoint_pickup_complete(robot_id: str = "sshopy2"):
+    """
+    고객 수령 완료 (TC 2-19).
+    시착존 도착 후 사용자가 모바일에서 '수령 완료' 버튼을 누르면 호출됨.
+    좌석 해제 + 회수존 이동 + 홈 복귀 트리거.
+    """
+    ok, msg = fleet.complete_pickup(robot_id)
+    if not ok:
+        raise HTTPException(status_code=409, detail=msg)
+    logger.info(f"[pickup/complete] 수령 완료 → robot={robot_id}")
+    return {"success": True, "robot_id": robot_id}
+
+# ─────────────────────────────────────────────────────────────────────────
+# /ws/amr — phone_ui 가 구독, 시착 시나리오 도착 이벤트 push
+#
+# 담당자가 할 일:
+#   - 다중 클라이언트 연결 관리 (현재는 클라이언트별 마지막 stage만 추적)
+#   - seat_id별 필터링 (현재는 모든 클라이언트에 broadcast)
+#   - 인증/세션 식별 추가
+# ─────────────────────────────────────────────────────────────────────────
+
+@app.websocket("/ws/amr")
+async def ws_amr(ws: WebSocket):
+    """
+    시착 시나리오 도착 알림 WebSocket.
+    phone_ui가 시착 요청 후 이 WS를 구독하여 AMR_ARRIVE 메시지 수신 → 도착 모달 표시.
+    """
+    await ws.accept()
+    last_stage_per_robot: dict[str, Optional[int]] = {}
+    try:
+        while True:
+            states = fleet.get_all_states()
+            for s in states:
+                rid = s["robot_id"]
+                cur = s.get("tryon_stage")
+                prev = last_stage_per_robot.get(rid)
+                # AT_TRYZONE 진입 순간에만 1회 push
+                if cur == 12 and prev != 12:  # 12 == TRYON_STAGE_AT_TRYZONE
+                    await ws.send_json({
+                        "type": "AMR_ARRIVE",
+                        "robot_id": rid,
+                        "seat_id":  s.get("tryon_seat"),
+                        "product_id": s.get("tryon_product_id"),
+                    })
+                last_stage_per_robot[rid] = cur
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"[/ws/amr] error: {e}")
+
+# === 시착 시나리오 임시 코드 끝 ===========================================
+# TODO(원본 보존): 아래 옛 시그니처는 참고용. DB 통합 시 제거 가능.
+# @app.post("/tryon/request")
+# async def endpoint_tryon_request(product_id: str, robot_id: str = "sshopy1"):
+#     ok = fleet.start_delivery(robot_id)  # ← 옛날엔 그냥 배달 시나리오로 돌렸음
 #     ...
 #
 # @app.post("/admin/estop")
