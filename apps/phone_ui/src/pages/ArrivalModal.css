@@ -18,6 +18,8 @@
   box-shadow: 0 20px 60px rgba(0,0,0,0.6);
 }
 
+
+
 .arrival-top-text {
   font-size: 14px;
   color: #cbb6ff;
@@ -94,3 +96,27 @@
   font-weight: bold;
   cursor: pointer;
 }
+
+.arrival-success-box.fail {
+  border: 1px solid #ef4444;
+  background: #fff1f2;
+}
+
+.arrival-success-title.fail {
+  color: #dc2626;
+}
+
+.arrival-check.fail {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+}
+
+.arrival-success-desc {
+  color: #4b5563;
+}
+
+.arrival-btn.fail {
+  background: #111827;
+  color: #ffffff;
+}
+

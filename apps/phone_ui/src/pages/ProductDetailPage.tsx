@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './ProductDetailPage.css';
 
 import ArrivalModal from "./ArrivalModal";
-
+import TryOnModal from './TryOnModal';
 
 type Product = {
   shoe_id: string;
@@ -74,8 +74,16 @@ export default function ProductDetailPage() {
   const [findLoading, setFindLoading] = useState(false);
 
 
-  // 좌석 정보 
+   // 좌석 정보 
   const [seatStatus, setSeatStatus] = useState<number[]>([0, 0, 0, 0]);
+
+  // 시착 요청
+  const [tryOnPopupOpen, setTryOnPopupOpen] = useState(false);
+  const [tryOnLoading, setTryOnLoading] = useState(false);
+
+  const [failModalOpen, setFailModalOpen] = useState(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
 
   // 도착 팝업
   const [isArriveOpen, setIsArriveOpen] = useState(false);
@@ -84,41 +92,42 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!API) return;
 
-    const wsUrl = API.replace('http://', 'ws://').replace('https://', 'wss://');
+    let ws: WebSocket;
+    let retryTimer: any;
 
-    const ws = new WebSocket(`${wsUrl}/ws/amr`);
+    const connect = () => {
+      const wsBaseUrl = API.replace('http://', 'ws://').replace('https://', 'wss://');
 
-    ws.onopen = () => {
-      console.log('AMR WebSocket connected');
-    };
+      ws = new WebSocket(`${wsBaseUrl}/ws/amr`);
 
-    ws.onmessage = (event) => {
-      try {
+      ws.onopen = () => {
+        console.log('AMR 연결됨');
+      };
+
+      ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        console.log('AMR WebSocket message:', data);
 
         if (data.type === 'AMR_ARRIVE') {
-          setMsg('AMR이 도착했습니다.');
-
-          // 필요하면 여기서 화면 이동도 가능
-          // navigate('/some-page');
+          setTryOnPopupOpen(false);
           setIsArriveOpen(true);
         }
-      } catch (e) {
-        console.error('WebSocket message parse error:', e);
-      }
+      };
+
+      ws.onclose = () => {
+        console.log('AMR 끊김 → 재연결');
+        retryTimer = setTimeout(connect, 1000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
     };
 
-    ws.onerror = (error) => {
-      console.error('AMR WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('AMR WebSocket closed');
-    };
+    connect();
 
     return () => {
-      ws.close();
+      ws?.close();
+      clearTimeout(retryTimer);
     };
   }, []);
 
@@ -254,6 +263,19 @@ export default function ProductDetailPage() {
     };
   }, [isFindDialogOpen]);
 
+
+   // msg 
+  useEffect(() => {
+    if (!msg) return;
+
+    const timer = setTimeout(() => {
+      setMsg('');
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [msg]);
+
+
   const handleSizeClick = (size: number) => {
     const matched = selectedColor
       ? inventory.find((item) => item.size === size && item.color === selectedColor)
@@ -351,80 +373,53 @@ export default function ProductDetailPage() {
   //     setMsg('요청 중 오류 발생');
   //   }
   // };
-  /* ============================================================
-   * === 시착 시나리오 (Scene 2) 임시 코드 — 담당자 인계용 ===
-   * 작성일: 2026-04-27
-   * 범위: TC 2-06 (모바일 시착 요청), TC 2-19 (수령 완료)
-   *
-   * 담당자가 할 일:
-   *   1. robot_id 하드코딩(sshopy2) → FMS에서 사용가능 로봇 자동 선택
-   *   2. product_id 변환: 현재 product.model 사용 → 정식 product_id 사용
-   *   3. WS 재연결 로직 추가 (현재 일회성)
-   *   4. 에러 응답 처리 강화 (HTTP 409 좌석사용중, 503 미연결 등)
-   *   5. 수령완료 후 페이지 전환 또는 후속 처리
-   *
-   * 동작:
-   *   - 시착 요청: POST {API}/tryon/request {product_id, color, size, seat_id, robot_id}
-   *   - 도착 감지: WS {API}/ws/amr → AMR_ARRIVE → ArrivalModal 자동 표시
-   *   - 수령 완료: ArrivalModal onClose에서 POST {API}/pickup/complete
-   * ============================================================ */
-  const TRYON_ROBOT_ID = 'sshopy2';   // 임시 하드코딩
-
   const handleTryOnRequest = async () => {
-    if (!API) {
-      setMsg('API_URL 미설정');
-      return;
-    }
-    if (!product) {
-      setMsg('상품 정보 없음');
-      return;
-    }
     try {
-      const res = await fetch(`${API}/tryon/request`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: String(product.model ?? ''),
-          color:      selectedColor ?? null,
-          size:       selectedSize != null ? String(selectedSize) : null,
-          seat_id:    seat,
-          robot_id:   TRYON_ROBOT_ID,
-        }),
+
+      const selectedItem = inventory.find((item) => {
+        return item.size === selectedSize && item.color === selectedColor;
       });
-      if (!res.ok) {
-        const text = await res.text();
-        setMsg(`시착 요청 실패 (${res.status}): ${text}`);
+
+      if (!selectedItem) {
+        setMsg('사이즈와 색상을 선택해주세요.');
         return;
       }
+
+      setTryOnPopupOpen(true);
+      setFailModalOpen(false);
+
+      const tryOnRes = await fetch(`${API}/tryon/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          product_id: selectedItem.product_id,
+          seat_id: `seat_${seat}`,
+        }),
+      });
+
+      const tryOnData = await tryOnRes.json();
+      console.log('try-on:', tryOnData);
+
+      if (!tryOnRes.ok || !tryOnData.success) {
+        alert('시착 요청 접수 실패');
+        setTryOnPopupOpen(false);
+        setFailModalOpen(true); 
+        return;
+      }
+
       setMsg(
         `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${selectedColor ?? '-'} / 좌석 ${seat}`
       );
     } catch (error) {
       console.error(error);
-      setMsg('시착 요청 중 오류 발생');
+      setMsg('요청 중 오류 발생');
+      setTryOnPopupOpen(false);
+      setFailModalOpen(true); 
     }
-  };
 
-  // 수령 완료 (ArrivalModal "수령 완료" 버튼 클릭 시)
-  const handlePickupComplete = async () => {
-    setIsArriveOpen(false);
-    if (!API) return;
-    try {
-      const res = await fetch(`${API}/pickup/complete?robot_id=${TRYON_ROBOT_ID}`, {
-        method: 'POST',
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        setMsg(`수령 완료 처리 실패 (${res.status}): ${text}`);
-        return;
-      }
-      setMsg('수령 완료 — 로봇이 회수존으로 이동합니다');
-    } catch (error) {
-      console.error(error);
-      setMsg('수령 완료 요청 중 오류 발생');
-    }
   };
-  /* === 시착 시나리오 임시 코드 끝 ============================================ */
 
   // 신발 찾기 외부함수 
   const handleFindShoeRequest = async (shoe_id: string = '') => {  
@@ -605,7 +600,29 @@ export default function ProductDetailPage() {
   return (
     <div className="page-container">
 
-      <ArrivalModal open={isArriveOpen} onClose={handlePickupComplete} />
+      {/* 시착 진행중 */}
+      <TryOnModal
+        open={tryOnPopupOpen}
+        onClose={() => setTryOnPopupOpen(false)}
+        image={displayImage}
+        productName={product?.name}
+        size={selectedSize}
+        color={selectedColor}
+        // seat={seat}
+      />
+
+      {/* 도착 */}
+      <ArrivalModal
+        open={isArriveOpen}
+        onClose={() => setIsArriveOpen(false)}
+      />
+
+      {/* 실패 */}
+      <ArrivalModal
+        open={failModalOpen}
+        onClose={() => setFailModalOpen(false)}
+        type="fail"
+      />
       {/* ✅ 여기 넣기 (main-card 위) */}
       {isFindDialogOpen && (
         <div className="dialog-overlay">
