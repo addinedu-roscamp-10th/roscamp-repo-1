@@ -89,85 +89,56 @@ export default function ProductDetailPage() {
   const [isArriveOpen, setIsArriveOpen] = useState(false);
 
 
-useEffect(() => {
-  if (!API) return;
+  useEffect(() => {
+    if (!API) return;
 
-  let ws: WebSocket | null = null;
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
-  let closedByCleanup = false;
+    let ws: WebSocket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let closedByCleanup = false;
 
-  const connect = () => {
-    const wsBaseUrl = API.replace('http://', 'ws://').replace('https://', 'wss://');
+    const connect = () => {
+      const wsBaseUrl = API.replace('http://', 'ws://').replace('https://', 'wss://');
 
-    ws = new WebSocket(`${wsBaseUrl}/ws/amr`);
+      ws = new WebSocket(`${wsBaseUrl}/ws/amr`);
 
-    ws.onopen = () => {
-      console.log('AMR ws connected');
+      ws.onopen = () => {
+        console.log('AMR ws connected');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'AMR_ARRIVE') {
+          setTryOnPopupOpen(false);
+          setIsArriveOpen(true);
+        }
+      };
+
+      ws.onerror = () => {
+        ws?.close();
+      };
+
+      ws.onclose = () => {
+        console.log('AMR ws closed');
+
+        if (!closedByCleanup) {
+          retryTimer = setTimeout(connect, 1000);
+        }
+      };
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    connect();
 
-      if (data.type === 'AMR_ARRIVE') {
-        setTryOnPopupOpen(false);
-        setIsArriveOpen(true);
+    return () => {
+      closedByCleanup = true;
+
+      if (retryTimer) {
+        clearTimeout(retryTimer);
       }
-    };
 
-    ws.onerror = () => {
       ws?.close();
     };
-
-    ws.onclose = () => {
-      console.log('AMR ws closed');
-
-      if (!closedByCleanup) {
-        retryTimer = setTimeout(connect, 1000);
-      }
-    };
-  };
-
-  connect();
-
-  return () => {
-    closedByCleanup = true;
-
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-    }
-
-    ws?.close();
-  };
-}, []);
-
-
-  // //seat info 
-  // useEffect(() => {
-  //   const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/seat`);
-
-  //   ws.onopen = () => {
-  //     console.log('seat ws connected');
-  //   };
-
-  //   ws.onmessage = (event) => {
-  //     const data = JSON.parse(event.data);
-
-  //     if (data.type === 'SEAT_UPDATE') {
-  //       console.log('seat update:', data.data);
-  //       setSeatStatus(data.data);
-  //     }
-  //   };
-
-  //   ws.onerror = (e) => {
-  //     console.log('seat ws error', e);
-  //   };
-
-  //   ws.onclose = () => {
-  //     console.log('seat ws closed');
-  //   };
-
-  //   return () => ws.close();
-  // }, []);
+  }, []);
 
   // seat info
   useEffect(() => {
@@ -269,10 +240,8 @@ useEffect(() => {
     fetchProduct();
   }, []);
 
-  useEffect(()=>{
-    
+  useEffect(()=>{   
     if (!product?.shoe_id) return; // (product 아직 없을때 방지)
-
     const fetchInventory = async () => {
       try {
         const res = await fetch(
@@ -292,17 +261,6 @@ useEffect(() => {
         const data = await res.json();
         setInventory(data); //배열 그대로 넣기
         console.log("inventory Data: ", data);
-
-        // if (data.length > 0) {
-        //   const first = data[0];
-        //   setSelectedSize(first.size);
-        //   setSelectedColor(first.color);
-
-        //   if (first.image_url) {
-        //     setDisplayImage(`${API}${first.image_url}`);
-        //   }
-        // }
-
 
         if (data.length > 0) {
           const available = data.filter(
@@ -335,9 +293,6 @@ useEffect(() => {
     console.log('displayImage:', displayImage);
   }, [displayImage]);
 
-
-  
-
   useEffect(() => {
     if (isFindDialogOpen) {
       document.body.classList.add('modal-open');
@@ -362,278 +317,90 @@ useEffect(() => {
     return () => clearTimeout(timer);
   }, [msg]);
 
+  const normalizeColor = (value: string | null | undefined) => {
+    return String(value ?? '').trim().toLowerCase();
+  };
 
-  // const handleSizeClick = (size: number) => {
-  //   const matched = selectedColor
-  //     ? inventory.find((item) => item.size === size && item.color === selectedColor)
-  //     : inventory.find((item) => item.size === size);
+  const hasStock = (size: number, color: string | null) => {
+    return inventory.some(
+      (item) =>
+        item.shoe_id === product?.shoe_id &&
+        Number(item.size) === Number(size) &&
+        normalizeColor(item.color) === normalizeColor(color) &&
+        Number(item.stock) === 1
+    );
+  };
 
-  //   if (!matched) return;
-
-  //   setSelectedSize(size);
-
-  //   if (!selectedColor) {
-  //     setSelectedColor(matched.color);
-  //   }
-
-  //   if (matched.image_url) {
-  //     setDisplayImage(`${API}${matched.image_url}`);
-  //   }
-  // };
-
-  
-  // const handleColorClick = (color: string) => {
-  //   setSelectedColor(color);
-
-  //   const matchedWithCurrentSize =
-  //     selectedSize !== null
-  //       ? inventory.find((item) => item.color === color && item.size === selectedSize)
-  //       : null;
-
-  //   if (matchedWithCurrentSize) {
-  //     if (matchedWithCurrentSize.image_url) {
-  //       setDisplayImage(`${API}${matchedWithCurrentSize.image_url}`);
-  //     }
-  //     return;
-  //   }
-
-  //   const firstColorItem = inventory.find((item) => item.color === color);
-
-  //   if (!firstColorItem) {
-  //     setSelectedSize(null);
-  //     return;
-  //   }
-
-  //   setSelectedSize(null);
-
-  //   if (firstColorItem.image_url) {
-  //     setDisplayImage(`${API}${firstColorItem.image_url}`);
-  //   }
-  // };
-
-
-// const handleSizeClick = (size: number) => {
-//   if (!selectedColor) return;
-
-//   const matched = inventory.find(
-//     (item) =>
-//       item.shoe_id === product?.shoe_id &&
-//       Number(item.size) === Number(size) &&
-//       normalizeColor(item.color) === normalizeColor(selectedColor) &&
-//       Number(item.stock) === 1
-//   );
-
-//   if (!matched) return;
-
-//   setSelectedSize(Number(matched.size));
-
-//   if (matched.image_url) {
-//     setDisplayImage(`${API}${matched.image_url}`);
-//   }
-// };
-
-// const handleColorClick = (color: string) => {
-//   const availableItems = inventory
-//     .filter(
-//       (item) =>
-//         item.shoe_id === product?.shoe_id &&
-//         normalizeColor(item.color) === normalizeColor(color) &&
-//         Number(item.stock) === 1
-//     )
-//     .sort((a, b) => Number(a.size) - Number(b.size));
-
-//   if (availableItems.length === 0) {
-//     setSelectedColor(color);
-//     setSelectedSize(null);
-//     return;
-//   }
-
-//   const target = availableItems[0];
-
-//   setSelectedColor(target.color);
-//   setSelectedSize(Number(target.size));
-
-//   if (target.image_url) {
-//     setDisplayImage(`${API}${target.image_url}`);
-//   }
-// };
-
-// const selectedItem = inventory.find(
-//   (item) =>
-//     item.shoe_id === product?.shoe_id &&
-//     Number(item.size) === Number(selectedSize) &&
-//     normalizeColor(item.color) === normalizeColor(selectedColor)
-// );
-
-// const productCount = selectedItem
-//   ? inventory.filter(
-//       (item) =>
-//         item.shoe_id === product?.shoe_id &&
-//         item.product_id === selectedItem.product_id &&
-//         Number(item.stock) === 1
-//     ).length
-//   : 0;
-
-//   const availableSizes = Array.from(
-//     new Set(
-//       inventory
-//         .filter(
-//           (item) =>
-//             Number(item.stock) === 1 &&
-//             normalizeColor(item.color) === normalizeColor(selectedColor)
-//         )
-//         .map((item) => Number(item.size))
-//     )
-//   ).sort((a, b) => a - b);
-
-//   const availableColors = Array.from(
-//     new Set(
-//       inventory
-//         .filter((item) => Number(item.stock) === 1)
-//         .map((item) => item.color)
-//     )
-//   );
-
-
-    const normalizeColor = (value: string | null | undefined) => {
-  return String(value ?? '').trim().toLowerCase();
-};
-
-const hasStock = (size: number, color: string | null) => {
-  return inventory.some(
-    (item) =>
-      item.shoe_id === product?.shoe_id &&
-      Number(item.size) === Number(size) &&
-      normalizeColor(item.color) === normalizeColor(color) &&
-      Number(item.stock) === 1
-  );
-};
-
-const hasColorStock = (color: string) => {
-  return inventory.some(
-    (item) =>
-      item.shoe_id === product?.shoe_id &&
-      normalizeColor(item.color) === normalizeColor(color) &&
-      Number(item.stock) === 1
-  );
-};
-
-const handleSizeClick = (size: number) => {
-  if (!selectedColor) return;
-
-  const matched = inventory.find(
-    (item) =>
-      item.shoe_id === product?.shoe_id &&
-      Number(item.size) === Number(size) &&
-      normalizeColor(item.color) === normalizeColor(selectedColor) &&
-      Number(item.stock) === 1
-  );
-
-  if (!matched) return;
-
-  setSelectedSize(Number(matched.size));
-
-  if (matched.image_url) {
-    setDisplayImage(`${API}${matched.image_url}`);
-  }
-};
-
-const handleColorClick = (color: string) => {
-  const availableItems = inventory
-    .filter(
+  const hasColorStock = (color: string) => {
+    return inventory.some(
       (item) =>
         item.shoe_id === product?.shoe_id &&
         normalizeColor(item.color) === normalizeColor(color) &&
         Number(item.stock) === 1
-    )
-    .sort((a, b) => Number(a.size) - Number(b.size));
+    );
+  };
 
-  if (availableItems.length === 0) {
-    setSelectedColor(color);
-    setSelectedSize(null);
-    return;
-  }
+  const handleSizeClick = (size: number) => {
+    if (!selectedColor) return;
 
-  const target = availableItems[0];
-
-  setSelectedColor(target.color);
-  setSelectedSize(Number(target.size));
-
-  if (target.image_url) {
-    setDisplayImage(`${API}${target.image_url}`);
-  }
-};
-
-const selectedItem = inventory.find(
-  (item) =>
-    item.shoe_id === product?.shoe_id &&
-    Number(item.size) === Number(selectedSize) &&
-    normalizeColor(item.color) === normalizeColor(selectedColor)
-);
-
-const productCount = selectedItem
-  ? inventory.filter(
+    const matched = inventory.find(
       (item) =>
         item.shoe_id === product?.shoe_id &&
-        item.product_id === selectedItem.product_id &&
+        Number(item.size) === Number(size) &&
+        normalizeColor(item.color) === normalizeColor(selectedColor) &&
         Number(item.stock) === 1
-    ).length
-  : 0;
+    );
 
+    if (!matched) return;
 
+    setSelectedSize(Number(matched.size));
 
+    if (matched.image_url) {
+      setDisplayImage(`${API}${matched.image_url}`);
+    }
+  };
 
+  const handleColorClick = (color: string) => {
+    const availableItems = inventory
+      .filter(
+        (item) =>
+          item.shoe_id === product?.shoe_id &&
+          normalizeColor(item.color) === normalizeColor(color) &&
+          Number(item.stock) === 1
+      )
+      .sort((a, b) => Number(a.size) - Number(b.size));
 
-  // const handleTryOnRequest = async () => {
-  //   try {
-  //     const tryOnRes = await fetch(`${API}/try-on-request`, {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: JSON.stringify({
-  //         model: product?.model,
-  //         robot_name: 'shoppy1',
-  //       }),
-  //     });
+    if (availableItems.length === 0) {
+      setSelectedColor(color);
+      setSelectedSize(null);
+      return;
+    }
 
-  //     const tryOnData = await tryOnRes.json();
-  //     console.log('try-on:', tryOnData);
+    const target = availableItems[0];
+      
+    setSelectedColor(target.color);
+    setSelectedSize(Number(target.size));
 
-  //     if (!tryOnData.success) {
-  //       alert('시착 요청 접수 실패');
-  //       return;
-  //     }
+    if (target.image_url) {
+      setDisplayImage(`${API}${target.image_url}`);
+    }
+  };
 
-  //     const robotRes = await fetch(`${API}/robot/forward`, {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: JSON.stringify({
-  //         robot_name: 'shoppy1',
-  //         speed: 0.2,
-  //         duration: 1.0,
-  //       }),
-  //     });
+  const selectedItem = inventory.find(
+    (item) =>
+      item.shoe_id === product?.shoe_id &&
+      Number(item.size) === Number(selectedSize) &&
+      normalizeColor(item.color) === normalizeColor(selectedColor)
+  );
 
-  //     const robotData = await robotRes.json();
-
-  //     if (robotData.success) {
-  //       setMsg(
-  //         `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${
-  //           selectedColor ?? '-'
-  //         } / 좌석 ${seat}`
-  //       );
-  //     } else {
-  //       setMsg('시착 요청은 되었지만 로봇 이동 실패');
-  //     }
-  //   } catch (error) {
-  //     console.error(error);
-  //     setMsg('요청 중 오류 발생');
-  //   }
-  // };
-
+  const productCount = selectedItem
+    ? inventory.filter(
+        (item) =>
+          item.shoe_id === product?.shoe_id &&
+          item.product_id === selectedItem.product_id &&
+          Number(item.stock) === 1
+      ).length
+    : 0;
 
   //2026 04 29 
   // const handleTryOnRequest = async () => {
@@ -760,82 +527,78 @@ const productCount = selectedItem
   };
   /* === 시착 시나리오 임시 코드 끝 ============================================ */
 
-
-
   // 신발 찾기 외부함수 
   const handleFindShoeRequest = async (shoe_id: string = '') => {  
     
-    try {      
-        const res = await fetch(
+    try {        
+      const res = await fetch(
           `${API}/find_shoe?data=${encodeURIComponent(
             JSON.stringify({ "shoe_id": shoe_id })
           )}`,{
             method: "POST",
-          }
-        );
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`상품 조회 실패 (${res.status}) ${text}`);
-        }
-
-        const data = await res.json();
-        console.log(data);
-        
-        const parsedSizes = typeof data.sizes === 'string' ? JSON.parse(data.sizes) : data.sizes;
-        const parsedColors = typeof data.colors === 'string' ? JSON.parse(data.colors) : data.colors;
-        setDisplayImage(`${API}${data.image_url}`);
-
-        setProduct({
-          ...data,
-          name: data.model,
-          sizes: parsedSizes,
-          colors: parsedColors,
-        });
-      } catch (e) {
-        console.error(e);
-        setError('상품 정보를 불러오지 못했습니다.');
-      } finally {
-        setLoading(false);
+          }  
+      );
+  
+      if (!res.ok) {
+        const text = await res.text();  
+        throw new Error(`상품 조회 실패 (${res.status}) ${text}`);
       }
+        
+      const data = await res.json();  
+      const parsedSizes = typeof data.sizes === 'string' ? JSON.parse(data.sizes) : data.sizes;
+      const parsedColors = typeof data.colors === 'string' ? JSON.parse(data.colors) : data.colors;
+      setDisplayImage(`${API}${data.image_url}`);
+  
+      setProduct({
+        ...data,  
+        name: data.model,  
+        sizes: parsedSizes,  
+        colors: parsedColors,  
+      });
+    } catch (e) {  
+      console.error(e);  
+      setError('상품 정보를 불러오지 못했습니다.');  
+    } finally {  
+      setLoading(false);   
+    } 
   };
 
   const handleFindAllShoeRequest = async () => {  
     
-    try {      
-        const res = await fetch(
-          `${API}/find_shoe?data=${encodeURIComponent(
-            JSON.stringify({ "shoe_id": '' })
-          )}`,{
-            method: "POST",
-          }
-        );
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`상품 조회 실패 (${res.status}) ${text}`);
-        }
-
-        const data = await res.json();
-        
-        // 여기 추가
-        const filteredData = data.filter((item: any) => {
-          return typeof item.shoe_id === 'string' && item.shoe_id.trim().length > 0;
-        });
-      
-        if (Array.isArray(filteredData) && filteredData.length > 0) {
-          navigate('/search_result', {
-            state: { shoes: filteredData },
-          });
-          return;
-        }
-
-      } catch (e) {
-        console.error(e);
-        setError('상품 정보를 불러오지 못했습니다.');
-      } finally {
-        setLoading(false);
+    try {        
+      const res = await fetch(     
+        `${API}/find_shoe?data=${encodeURIComponent(   
+          JSON.stringify({ "shoe_id": '' })
+        )}`,{   
+          method: "POST",  
+        }  
+      );
+  
+      if (!res.ok) {
+        const text = await res.text();  
+        throw new Error(`상품 조회 실패 (${res.status}) ${text}`);  
       }
+
+      const data = await res.json();
+        
+      // 여기 추가  
+      const filteredData = data.filter((item: any) => {  
+        return typeof item.shoe_id === 'string' && item.shoe_id.trim().length > 0;
+      });
+      
+      if (Array.isArray(filteredData) && filteredData.length > 0) {
+        navigate('/search_result', {
+          state: { shoes: filteredData },
+        });
+        return;
+      }
+
+    } catch (e) {
+      console.error(e);
+      setError('상품 정보를 불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
   };
 
 
@@ -899,17 +662,16 @@ const productCount = selectedItem
         return;
       }
 
-
       // 객체이면 → 상세 페이지로
       const parsedSizes = typeof data.sizes === 'string' ? JSON.parse(data.sizes) : data.sizes;
       const parsedColors = typeof data.colors === 'string' ? JSON.parse(data.colors) : data.colors;        
       setDisplayImage(`${API}${data.image_url}`);
 
-      setProduct({
-          ...data,
-          name: data.model,
-          sizes: parsedSizes,
-          colors: parsedColors,
+      setProduct({  
+        ...data,
+        name: data.model,        
+        sizes: parsedSizes,        
+        colors: parsedColors,
       });
 
       setIsFindDialogOpen(false);
@@ -921,7 +683,6 @@ const productCount = selectedItem
       setFindLoading(false);
     }
   };
-
 
   if (loading) {
     return <div className="page-container">로딩중...</div>;
@@ -1094,36 +855,6 @@ const productCount = selectedItem
               </div>
 
               <div className="seat-zone-label">시착 구역</div>
-
-              {/* <div className="seat-area">
-                {seats.map((s) => (
-                  <button
-                    key={s}
-                    className={`seat-btn ${seat === s ? 'active' : ''}`}
-                    onClick={() => setSeat(s)}
-                  >
-                    {s}
-                  </button>
-                ))} */}
-                {/* {seats.map((s, idx) => {
-                  const occupied = seatStatus[idx] === 1;
-
-                  return (
-                    <button
-                      key={s}
-                      disabled={occupied}
-                      className={`seat-btn 
-                        ${seat === s ? 'active' : ''} 
-                        ${occupied ? 'occupied' : ''}
-                      `}
-                      onClick={() => setSeat(s)}
-                    >
-                      {occupied ? '사용중' : s}
-                    </button>
-                  );
-                })} */}
-              {/* </div> */}
-
               <div className="seat-area">
                 {[1, 4, 2, 3].map((s) => {
                   const idx = seats.indexOf(s); 
@@ -1151,13 +882,7 @@ const productCount = selectedItem
                 })}
               </div>
 
-              <div className="seat-labels">
-                {/* <span>좌석 1</span>
-                <span>좌석 2</span>
-                <span>좌석 3</span>
-                <span>좌석 4</span> */}
-              </div>
-
+              <div className="seat-labels"></div>
               <div className="entrance-tag">입구</div>
             </div>
           </div>
@@ -1172,20 +897,12 @@ const productCount = selectedItem
           >
             시착 요청
           </button>
-
-          {/* <button
-            className="action-btn"
-            onClick={() => setMsg(`${product.name} 신발 찾기 시작`)}
-          >
-            신발 찾기
-          </button> */}
           <button
             className="action-btn"
             onClick={() => {setIsFindDialogOpen(true);setMsg('')}}
           >
             신발 찾기
           </button>
-
 
           <button
             className="action-btn"
