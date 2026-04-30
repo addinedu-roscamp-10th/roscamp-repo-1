@@ -291,16 +291,34 @@ useEffect(() => {
 
         const data = await res.json();
         setInventory(data); //배열 그대로 넣기
+        console.log("inventory Data: ", data);
+
+        // if (data.length > 0) {
+        //   const first = data[0];
+        //   setSelectedSize(first.size);
+        //   setSelectedColor(first.color);
+
+        //   if (first.image_url) {
+        //     setDisplayImage(`${API}${first.image_url}`);
+        //   }
+        // }
+
 
         if (data.length > 0) {
-          const first = data[0];
-          setSelectedSize(first.size);
-          setSelectedColor(first.color);
+          const available = data.filter(
+            (item: ShoeDetailInfo) => Number(item.stock) === 1
+          );
 
-          if (first.image_url) {
-            setDisplayImage(`${API}${first.image_url}`);
+          const target = available.length > 0 ? available[0] : data[0];
+
+          setSelectedSize(target.size);
+          setSelectedColor(target.color);
+
+          if (target.image_url) {
+            setDisplayImage(`${API}${target.image_url}`);
           }
         }
+
       } catch (e) {
         console.error(e);
       }
@@ -345,53 +363,226 @@ useEffect(() => {
   }, [msg]);
 
 
-  const handleSizeClick = (size: number) => {
-    const matched = selectedColor
-      ? inventory.find((item) => item.size === size && item.color === selectedColor)
-      : inventory.find((item) => item.size === size);
+  // const handleSizeClick = (size: number) => {
+  //   const matched = selectedColor
+  //     ? inventory.find((item) => item.size === size && item.color === selectedColor)
+  //     : inventory.find((item) => item.size === size);
 
-    if (!matched) return;
+  //   if (!matched) return;
 
-    setSelectedSize(size);
+  //   setSelectedSize(size);
 
-    if (!selectedColor) {
-      setSelectedColor(matched.color);
-    }
+  //   if (!selectedColor) {
+  //     setSelectedColor(matched.color);
+  //   }
 
-    if (matched.image_url) {
-      setDisplayImage(`${API}${matched.image_url}`);
-    }
-  };
+  //   if (matched.image_url) {
+  //     setDisplayImage(`${API}${matched.image_url}`);
+  //   }
+  // };
 
   
-  const handleColorClick = (color: string) => {
+  // const handleColorClick = (color: string) => {
+  //   setSelectedColor(color);
+
+  //   const matchedWithCurrentSize =
+  //     selectedSize !== null
+  //       ? inventory.find((item) => item.color === color && item.size === selectedSize)
+  //       : null;
+
+  //   if (matchedWithCurrentSize) {
+  //     if (matchedWithCurrentSize.image_url) {
+  //       setDisplayImage(`${API}${matchedWithCurrentSize.image_url}`);
+  //     }
+  //     return;
+  //   }
+
+  //   const firstColorItem = inventory.find((item) => item.color === color);
+
+  //   if (!firstColorItem) {
+  //     setSelectedSize(null);
+  //     return;
+  //   }
+
+  //   setSelectedSize(null);
+
+  //   if (firstColorItem.image_url) {
+  //     setDisplayImage(`${API}${firstColorItem.image_url}`);
+  //   }
+  // };
+
+
+// const handleSizeClick = (size: number) => {
+//   if (!selectedColor) return;
+
+//   const matched = inventory.find(
+//     (item) =>
+//       item.shoe_id === product?.shoe_id &&
+//       Number(item.size) === Number(size) &&
+//       normalizeColor(item.color) === normalizeColor(selectedColor) &&
+//       Number(item.stock) === 1
+//   );
+
+//   if (!matched) return;
+
+//   setSelectedSize(Number(matched.size));
+
+//   if (matched.image_url) {
+//     setDisplayImage(`${API}${matched.image_url}`);
+//   }
+// };
+
+// const handleColorClick = (color: string) => {
+//   const availableItems = inventory
+//     .filter(
+//       (item) =>
+//         item.shoe_id === product?.shoe_id &&
+//         normalizeColor(item.color) === normalizeColor(color) &&
+//         Number(item.stock) === 1
+//     )
+//     .sort((a, b) => Number(a.size) - Number(b.size));
+
+//   if (availableItems.length === 0) {
+//     setSelectedColor(color);
+//     setSelectedSize(null);
+//     return;
+//   }
+
+//   const target = availableItems[0];
+
+//   setSelectedColor(target.color);
+//   setSelectedSize(Number(target.size));
+
+//   if (target.image_url) {
+//     setDisplayImage(`${API}${target.image_url}`);
+//   }
+// };
+
+// const selectedItem = inventory.find(
+//   (item) =>
+//     item.shoe_id === product?.shoe_id &&
+//     Number(item.size) === Number(selectedSize) &&
+//     normalizeColor(item.color) === normalizeColor(selectedColor)
+// );
+
+// const productCount = selectedItem
+//   ? inventory.filter(
+//       (item) =>
+//         item.shoe_id === product?.shoe_id &&
+//         item.product_id === selectedItem.product_id &&
+//         Number(item.stock) === 1
+//     ).length
+//   : 0;
+
+//   const availableSizes = Array.from(
+//     new Set(
+//       inventory
+//         .filter(
+//           (item) =>
+//             Number(item.stock) === 1 &&
+//             normalizeColor(item.color) === normalizeColor(selectedColor)
+//         )
+//         .map((item) => Number(item.size))
+//     )
+//   ).sort((a, b) => a - b);
+
+//   const availableColors = Array.from(
+//     new Set(
+//       inventory
+//         .filter((item) => Number(item.stock) === 1)
+//         .map((item) => item.color)
+//     )
+//   );
+
+
+    const normalizeColor = (value: string | null | undefined) => {
+  return String(value ?? '').trim().toLowerCase();
+};
+
+const hasStock = (size: number, color: string | null) => {
+  return inventory.some(
+    (item) =>
+      item.shoe_id === product?.shoe_id &&
+      Number(item.size) === Number(size) &&
+      normalizeColor(item.color) === normalizeColor(color) &&
+      Number(item.stock) === 1
+  );
+};
+
+const hasColorStock = (color: string) => {
+  return inventory.some(
+    (item) =>
+      item.shoe_id === product?.shoe_id &&
+      normalizeColor(item.color) === normalizeColor(color) &&
+      Number(item.stock) === 1
+  );
+};
+
+const handleSizeClick = (size: number) => {
+  if (!selectedColor) return;
+
+  const matched = inventory.find(
+    (item) =>
+      item.shoe_id === product?.shoe_id &&
+      Number(item.size) === Number(size) &&
+      normalizeColor(item.color) === normalizeColor(selectedColor) &&
+      Number(item.stock) === 1
+  );
+
+  if (!matched) return;
+
+  setSelectedSize(Number(matched.size));
+
+  if (matched.image_url) {
+    setDisplayImage(`${API}${matched.image_url}`);
+  }
+};
+
+const handleColorClick = (color: string) => {
+  const availableItems = inventory
+    .filter(
+      (item) =>
+        item.shoe_id === product?.shoe_id &&
+        normalizeColor(item.color) === normalizeColor(color) &&
+        Number(item.stock) === 1
+    )
+    .sort((a, b) => Number(a.size) - Number(b.size));
+
+  if (availableItems.length === 0) {
     setSelectedColor(color);
-
-    const matchedWithCurrentSize =
-      selectedSize !== null
-        ? inventory.find((item) => item.color === color && item.size === selectedSize)
-        : null;
-
-    if (matchedWithCurrentSize) {
-      if (matchedWithCurrentSize.image_url) {
-        setDisplayImage(`${API}${matchedWithCurrentSize.image_url}`);
-      }
-      return;
-    }
-
-    const firstColorItem = inventory.find((item) => item.color === color);
-
-    if (!firstColorItem) {
-      setSelectedSize(null);
-      return;
-    }
-
     setSelectedSize(null);
+    return;
+  }
 
-    if (firstColorItem.image_url) {
-      setDisplayImage(`${API}${firstColorItem.image_url}`);
-    }
-  };
+  const target = availableItems[0];
+
+  setSelectedColor(target.color);
+  setSelectedSize(Number(target.size));
+
+  if (target.image_url) {
+    setDisplayImage(`${API}${target.image_url}`);
+  }
+};
+
+const selectedItem = inventory.find(
+  (item) =>
+    item.shoe_id === product?.shoe_id &&
+    Number(item.size) === Number(selectedSize) &&
+    normalizeColor(item.color) === normalizeColor(selectedColor)
+);
+
+const productCount = selectedItem
+  ? inventory.filter(
+      (item) =>
+        item.shoe_id === product?.shoe_id &&
+        item.product_id === selectedItem.product_id &&
+        Number(item.stock) === 1
+    ).length
+  : 0;
+
+
+
+
 
   // const handleTryOnRequest = async () => {
   //   try {
@@ -442,53 +633,134 @@ useEffect(() => {
   //     setMsg('요청 중 오류 발생');
   //   }
   // };
+
+
+  //2026 04 29 
+  // const handleTryOnRequest = async () => {
+  //   try {
+
+  //     const selectedItem = inventory.find((item) => {
+  //       return item.size === selectedSize && item.color === selectedColor;
+  //     });
+
+  //     if (!selectedItem) {
+  //       setMsg('사이즈와 색상을 선택해주세요.');
+  //       return;
+  //     }
+
+  //     setTryOnPopupOpen(true);
+  //     setFailModalOpen(false);
+
+  //     const tryOnRes = await fetch(`${API}/tryon/request`, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({
+  //         product_id: selectedItem.product_id,
+  //         seat_id: `seat_${seat}`,
+  //       }),
+  //     });
+
+  //     const tryOnData = await tryOnRes.json();
+  //     console.log('try-on:', tryOnData);
+
+  //     if (!tryOnRes.ok || !tryOnData.success) {
+  //       alert('시착 요청 접수 실패');
+  //       setTryOnPopupOpen(false);
+  //       setFailModalOpen(true); 
+  //       return;
+  //     }
+
+  //     setMsg(
+  //       `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${selectedColor ?? '-'} / 좌석 ${seat}`
+  //     );
+  //   } catch (error) {
+  //     console.error(error);
+  //     setMsg('요청 중 오류 발생');
+  //     setTryOnPopupOpen(false);
+  //     setFailModalOpen(true); 
+  //   }
+
+  // };
+  //2026 04 29 
+
+  /* ============================================================
+   * === 시착 시나리오 (Scene 2) 임시 코드 — 담당자 인계용 ===
+   * 작성일: 2026-04-27
+   * 범위: TC 2-06 (모바일 시착 요청), TC 2-19 (수령 완료)
+   *
+   * 담당자가 할 일:
+   *   1. robot_id 하드코딩(sshopy2) → FMS에서 사용가능 로봇 자동 선택
+   *   2. product_id 변환: 현재 product.model 사용 → 정식 product_id 사용
+   *   3. WS 재연결 로직 추가 (현재 일회성)
+   *   4. 에러 응답 처리 강화 (HTTP 409 좌석사용중, 503 미연결 등)
+   *   5. 수령완료 후 페이지 전환 또는 후속 처리
+   *
+   * 동작:
+   *   - 시착 요청: POST {API}/tryon/request {product_id, color, size, seat_id, robot_id}
+   *   - 도착 감지: WS {API}/ws/amr → AMR_ARRIVE → ArrivalModal 자동 표시
+   *   - 수령 완료: ArrivalModal onClose에서 POST {API}/pickup/complete
+   * ============================================================ */
+  const TRYON_ROBOT_ID = 'sshopy1';   // 임시 하드코딩
+
   const handleTryOnRequest = async () => {
+    if (!API) {
+      setMsg('API_URL 미설정');
+      return;
+    }
+    if (!product) {
+      setMsg('상품 정보 없음');
+      return;
+    }
     try {
-
-      const selectedItem = inventory.find((item) => {
-        return item.size === selectedSize && item.color === selectedColor;
-      });
-
-      if (!selectedItem) {
-        setMsg('사이즈와 색상을 선택해주세요.');
-        return;
-      }
-
-      setTryOnPopupOpen(true);
-      setFailModalOpen(false);
-
-      const tryOnRes = await fetch(`${API}/tryon/request`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const res = await fetch(`${API}/tryon/request`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          product_id: selectedItem.product_id,
-          seat_id: `seat_${seat}`,
+          product_id: String(product.model ?? ''),
+          color:      selectedColor ?? null,
+          size:       selectedSize != null ? String(selectedSize) : null,
+          seat_id:    seat,
+          robot_id:   TRYON_ROBOT_ID,
         }),
       });
-
-      const tryOnData = await tryOnRes.json();
-      console.log('try-on:', tryOnData);
-
-      if (!tryOnRes.ok || !tryOnData.success) {
-        alert('시착 요청 접수 실패');
-        setTryOnPopupOpen(false);
-        setFailModalOpen(true); 
+      if (!res.ok) {
+        const text = await res.text();
+        setMsg(`시착 요청 실패 (${res.status}): ${text}`);
         return;
       }
-
       setMsg(
         `시착 요청 완료: ${product?.model} / ${selectedSize ?? '-'} / ${selectedColor ?? '-'} / 좌석 ${seat}`
       );
     } catch (error) {
       console.error(error);
-      setMsg('요청 중 오류 발생');
-      setTryOnPopupOpen(false);
-      setFailModalOpen(true); 
+      setMsg('시착 요청 중 오류 발생');
     }
-
   };
+
+  // 수령 완료 (ArrivalModal "수령 완료" 버튼 클릭 시)
+  const handlePickupComplete = async () => {
+    setIsArriveOpen(false);
+    if (!API) return;
+    try {
+      const res = await fetch(`${API}/pickup/complete?robot_id=${TRYON_ROBOT_ID}`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        setMsg(`수령 완료 처리 실패 (${res.status}): ${text}`);
+        return;
+      }
+      setMsg('수령 완료 — 로봇이 회수존으로 이동합니다');
+    } catch (error) {
+      console.error(error);
+      setMsg('수령 완료 요청 중 오류 발생');
+    }
+  };
+  /* === 시착 시나리오 임시 코드 끝 ============================================ */
+
+
 
   // 신발 찾기 외부함수 
   const handleFindShoeRequest = async (shoe_id: string = '') => {  
@@ -753,24 +1025,26 @@ useEffect(() => {
             <div className="product-price">
               ₩{product?.price?.toLocaleString('ko-KR') ?? '-'}
             </div>
+
+            <div className="product-stock">
+              재고: {productCount}개
+            </div>
           </div>
         </div>
 
         <div className="section">
           <div className="section-title">사이즈 선택</div>
           <div className="size-list">
-            {product?.sizes.map((size) => {
-              const enabled = selectedColor
-                ? inventory.some(
-                    (item) => item.size === size && item.color === selectedColor
-                  )
-                : inventory.some((item) => item.size === size);
+            {product.sizes.map((size) => {
+              const enabled = selectedColor ? hasStock(size, selectedColor) : false;
 
               return (
                 <button
                   key={size}
                   disabled={!enabled}
-                  className={`size-btn ${selectedSize === size ? 'selected' : ''}`}
+                  className={`size-btn ${
+                    Number(selectedSize) === Number(size) ? 'selected' : ''
+                  }`}
                   onClick={() => handleSizeClick(size)}
                 >
                   {size}
@@ -783,14 +1057,18 @@ useEffect(() => {
         <div className="section">
           <div className="section-title">색상 선택</div>
           <div className="color-list">
-            {product?.colors.map((color) => {
-              const enabled = inventory.some((item) => item.color === color);
+            {product.colors.map((color) => {
+              const enabled = hasColorStock(color);
 
               return (
                 <button
                   key={color}
                   disabled={!enabled}
-                  className={`color-circle ${selectedColor === color ? 'selected' : ''}`}
+                  className={`color-circle ${
+                    normalizeColor(selectedColor) === normalizeColor(color)
+                      ? 'selected'
+                      : ''
+                  }`}
                   style={{ backgroundColor: color }}
                   onClick={() => handleColorClick(color)}
                 >
