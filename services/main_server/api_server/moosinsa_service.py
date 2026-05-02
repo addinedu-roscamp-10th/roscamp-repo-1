@@ -793,9 +793,10 @@ async def lifespan(app: FastAPI):
     )
 
     # Top View Camera 데이터 수신 서버
+    # .env 키: CAMERA_LISTEN_IP / CAMERA_LISTEN_PORT  # ★ CHANGED ★
     camera_udp_server = CameraUDPServer(
-        listen_ip= os.getenv('CAM_LISTEN_IP'),
-        listen_port= int(os.getenv('CAM_LISTEN_PORT'))
+        listen_ip=os.getenv('CAM_LISTEN_IP'),
+        listen_port=int(os.getenv('CAM_LISTEN_PORT')),
     )
     camera_udp_server.start()
 
@@ -913,6 +914,10 @@ async def ws_seat(websocket: WebSocket):
 
 @app.websocket("/ws/amr")
 async def ws_amr(websocket: WebSocket):
+    # ⚠️  CONFLICT — 이 핸들러와 아래 fleet 폴링 핸들러가 같은 경로 "/ws/amr" 로
+    #    중복 선언되어 있음. FastAPI는 마지막 선언을 사용하므로 이 핸들러는
+    #    현재 사실상 dead code 상태임.
+    #    → kiosk WebSocket 전용 경로 "/ws/kiosk/amr" 신규 추가로 해결. (★ NEW ★ 아래 참조)
     await websocket.accept()
     _ws_clients.append(websocket)
 
@@ -1082,6 +1087,12 @@ def find_shoe_info(
 # ============================================================================
 
 class _TryonReq(BaseModel):
+    # ■ KIOSK 사용 — kiosk_tryon.py TryonPage._on_request_clicked() 에서 POST /tryon/request 호출
+    # product_id : ShoeSearchResult 상품 ID (현재 kiosk는 product name 사용 중 → TODO: ID로 통일)
+    # color/size : TryonPage 에서 선택한 값 그대로 전달
+    # seat_id    : TryonPage 에서 선택한 좌석 번호 (int)
+    # robot_id   : 키오스크는 서버가 자동 선택하도록 기본값 유지 권장
+    #              → TODO: 서버 측에서 가용 로봇 자동 배정 로직 추가 필요
     product_id: str
     color: Optional[str] = None
     size: Optional[str] = None
@@ -1091,8 +1102,17 @@ class _TryonReq(BaseModel):
 @app.post("/tryon/request")
 async def endpoint_tryon_request(req: _TryonReq):
     """
-    모바일 시착 요청 (TC 2-06).
+    시착 요청 엔드포인트 (TC 2-06).
     body: {product_id, color, size, seat_id, robot_id}
+
+    ■ KIOSK 사용 — kiosk_tryon.py TryonPage._on_request_clicked() 에서 호출.
+      성공 시 키오스크는 kiosk_tryon_delivery 화면으로 전환하고
+      WS /ws/kiosk/amr 를 구독하여 도착 알림을 대기한다.
+      실패(409) 시 키오스크는 ErrorDialog 를 표시한다.
+
+    ■ 수정 필요 — robot_id 를 클라이언트가 지정하는 현재 구조는
+      다중 키오스크 환경에서 충돌 위험이 있음.
+      서버 측 가용 로봇 자동 배정 로직 추가를 권장한다. (TODO)
     """
     ok, msg = fleet.start_tryon(
         robot_id=req.robot_id,
@@ -1118,9 +1138,17 @@ async def endpoint_tryon_request(req: _TryonReq):
 @app.post("/pickup/complete")
 async def endpoint_pickup_complete(robot_id: str = "sshopy2"):
     """
-    고객 수령 완료 (TC 2-19).
-    시착존 도착 후 사용자가 모바일에서 '수령 완료' 버튼을 누르면 호출됨.
+    수령 완료 엔드포인트 (TC 2-19).
     좌석 해제 + 회수존 이동 + 홈 복귀 트리거.
+
+    ■ KIOSK 사용 — kiosk_tryon_arrive.py TryonArrivePage._confirm() 에서 호출.
+      '수령 완료' 버튼 클릭 또는 ARRIVE_TIMEOUT_MS(30초) 타임아웃 시 호출.
+      성공 시 키오스크는 kiosk_tryon_another 화면으로 전환한다.
+
+    ■ 수정 필요 — robot_id 를 query param으로 받는 현재 구조는
+      다중 키오스크에서 어떤 로봇인지 식별하기 어려움.
+      /tryon/request 응답으로 받은 robot_id 를 body(JSON)로 전달하는
+      방식으로 변경을 권장한다. (TODO)
     """
     ok, msg = fleet.complete_pickup(robot_id)
     if not ok:
@@ -1140,8 +1168,14 @@ async def endpoint_pickup_complete(robot_id: str = "sshopy2"):
 @app.websocket("/ws/amr")
 async def ws_amr(ws: WebSocket):
     """
-    시착 시나리오 도착 알림 WebSocket.
+    시착 시나리오 도착 알림 WebSocket (phone_ui 전용, fleet 폴링 방식).
     phone_ui가 시착 요청 후 이 WS를 구독하여 AMR_ARRIVE 메시지 수신 → 도착 모달 표시.
+
+    ■ KIOSK는 이 엔드포인트를 사용하지 않음.
+      키오스크는 "/ws/kiosk/amr" (★ NEW ★ 아래) 를 사용한다.
+      이유: phone_ui는 모바일 브라우저(JS WebSocket)이고
+            키오스크는 PySide6(QWebSocket 또는 urllib) 이므로
+            경로를 분리하면 각자 독립적으로 관리 가능.
     """
     await ws.accept()
     last_stage_per_robot: dict[str, Optional[int]] = {}
@@ -1214,6 +1248,399 @@ async def endpoint_amr_arrive():
         "result": "ok",
         "clients": len(_ws_clients)
     }
+
+
+# ══════════════════════════════════════════════════════════════
+# [8] PySide6 키오스크 ↔ Moosinsa Service          ★ NEW ★
+#     프로토콜: HTTP (FastAPI 엔드포인트, port 8000)
+#     키오스크(kiosk PC)에서 호출하는 전용 엔드포인트.
+#     페이지 전환 이벤트 수신 / 매장 정보 제공 / 초기 상태 조회.
+#
+#     엔드포인트 목록:
+#       POST /kiosk/page_event  - 키오스크 페이지 전환 이벤트 수신 (모니터링)
+#       GET  /kiosk/store_info  - 이용안내 페이지용 매장 정보 반환
+#       GET  /kiosk/status      - 키오스크 초기화 시 서버 상태 + 좌석 현황 반환
+# ══════════════════════════════════════════════════════════════
+
+# ── [8-1] Pydantic 모델 ──────────────────────────────────────
+
+class KioskPageEvent(BaseModel):                          # ★ NEW ★
+    """
+    키오스크가 페이지 전환 시 서버로 전송하는 이벤트.
+    관리자 PC에서 실시간으로 키오스크 상태를 모니터링하는 데 사용된다.
+
+    page    : 전환된 페이지 식별자                                # ★ CHANGED ★
+              "home"
+              | "category_brand"
+              | "search" | "search_result"
+              | "payment" | "payment_complete"
+              | "tryon" | "tryon_delivery" | "tryon_arrive" | "tryon_another"
+              ※ "information" 제거 — 이용안내 버튼이 뒤로가기로 교체되어
+                키오스크에서 InformationPage 로 직접 전환하지 않음
+    prev    : 이전 페이지 식별자 (최초 진입 시 None)
+    kiosk_id: 키오스크 장치 식별자 (다중 키오스크 운용 시 구분용)
+    """
+    page    : str
+    prev    : Optional[str] = None
+    kiosk_id: str = "kiosk_1"
+
+
+# ── [8-2] 매장 정보 데이터 (서버 관리) ───────────────────────
+#   하드코딩 대신 서버에서 관리하면 앱 재배포 없이 수정 가능.
+#   TODO: DB(MySQL)로 이전 시 store_info 테이블에서 조회하도록 교체.
+
+_STORE_INFO = {                                           # ★ NEW ★
+    "hours": [
+        {"label": "평일",  "time": "10:00 – 21:00"},
+        {"label": "주말",  "time": "10:00 – 22:00"},
+    ],
+    "closed": [
+        "매월 첫째 월요일 정기 휴무",
+        "공휴일 정상 영업",
+    ],
+    "contacts": [
+        {"type": "phone", "value": "02-1234-5678"},
+        {"type": "mail",  "value": "moosinsa@store.com"},
+        {"type": "insta", "value": "@MoosinsaStore"},
+    ],
+}
+
+
+# ── [8-3] 키오스크 페이지 전환 이력 (인메모리) ───────────────
+#   TODO: DB 연결 후 page_event 테이블 INSERT로 교체.
+
+_kiosk_page_log: list[dict] = []                         # ★ NEW ★
+
+
+# ── [8-4] 엔드포인트 ─────────────────────────────────────────
+
+@app.post("/kiosk/page_event", status_code=200)          # ★ NEW ★
+async def endpoint_kiosk_page_event(ev: KioskPageEvent):
+    """
+    키오스크 페이지 전환 이벤트 수신.
+
+    키오스크 앱이 페이지를 전환할 때마다 호출한다.
+    서버는 수신 즉시 로그에 기록하고 인메모리 이력에 추가한다.
+
+    input : KioskPageEvent { page, prev, kiosk_id }
+    output: { "received": true, "page": str }
+
+    호출 시점 (키오스크 측):                                      # ★ CHANGED ★
+      - home 표시 직후
+      - category_brand / search / search_result 표시 직후
+      - payment / payment_complete 표시 직후
+      - tryon / tryon_delivery / tryon_arrive / tryon_another 표시 직후
+      ※ information 은 뒤로가기 버튼 도입으로 키오스크 페이지에서 제거됨
+    """
+    import datetime
+    record = {
+        "kiosk_id"  : ev.kiosk_id,
+        "page"      : ev.page,
+        "prev"      : ev.prev,
+        "timestamp" : datetime.datetime.now().isoformat(timespec="seconds"),
+    }
+    _kiosk_page_log.append(record)
+    # 이력이 너무 길어지지 않도록 최근 200건만 유지
+    if len(_kiosk_page_log) > 200:
+        _kiosk_page_log.pop(0)
+
+    logger.info(
+        f"[kiosk/page_event] kiosk={ev.kiosk_id} "
+        f"{ev.prev or 'START'} → {ev.page}"
+    )
+    return {"received": True, "page": ev.page}
+
+
+@app.get("/kiosk/store_info")                            # ★ NEW ★
+async def endpoint_kiosk_store_info():
+    """
+    이용안내 페이지에 표시할 매장 정보 반환.
+
+    키오스크의 InformationPage가 표시될 때 호출하여
+    서버에서 최신 정보를 가져온다.
+    서버에서 수정하면 앱 재배포 없이 반영된다.
+
+    output: {
+        "hours"   : [{"label": str, "time": str}, ...],
+        "closed"  : [str, ...],
+        "contacts": [{"type": str, "value": str}, ...],
+    }
+    """
+    return _STORE_INFO
+
+
+@app.get("/kiosk/status")                                # ★ NEW ★
+async def endpoint_kiosk_status():
+    """
+    키오스크 앱 초기화 시 서버 상태 및 좌석 현황 반환.
+
+    키오스크가 시작될 때 1회 호출하여 서비스 가동 여부와
+    현재 좌석 점유 현황을 확인한다.
+
+    output: {
+        "service_ok"  : bool,           # FastAPI 정상 동작 여부
+        "mllm_ok"     : bool,           # M_LLM 연결 여부
+        "seats"       : list | None,    # 최신 좌석 현황 (YOLOResultServer 캐시)
+        "kiosk_log"   : int,            # 현재 인메모리 페이지 이력 건수
+    }
+
+    seats 필드:
+      YOLOResultServer.latest_seat_status 값을 그대로 전달한다.
+      아직 수신된 데이터가 없으면 None.
+      형식은 tcp_main_ai.py의 seat_status 메시지 형식을 따른다.
+    """
+    mllm_ok = False
+    seats   = None
+
+    if _orchestrator:
+        mllm_ok = await _orchestrator.llm.health_check()
+    if _yolo_result_server:
+        seats = _yolo_result_server.latest_seat_status
+
+    return {
+        "service_ok" : True,
+        "mllm_ok"    : mllm_ok,
+        "seats"      : seats,
+        "kiosk_log"  : len(_kiosk_page_log),
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# [9] PySide6 키오스크 시착 흐름 ↔ Moosinsa Service         ★ NEW ★
+#
+#  흐름 요약:
+#   kiosk_tryon        → POST /tryon/request       (■ 기존 재사용)
+#                      ← {success, robot_id, seat_id, product_id}
+#   kiosk_tryon_delivery → WS  /ws/kiosk/amr       (★ NEW ★)
+#                      ← {type:"KIOSK_AMR_ARRIVE", robot_id, seat_id}
+#                         도착 감지 시 kiosk_tryon_arrive 전환
+#   kiosk_tryon_arrive → POST /kiosk/tryon/progress (★ NEW ★, 폴링 대안)
+#                      ← {stage, progress_pct, robot_id}
+#   kiosk_tryon_arrive → POST /pickup/complete      (■ 기존 재사용)
+#                      ← {success, robot_id}
+#                         수령완료 후 kiosk_tryon_another 전환
+#
+#  좌석 현황 폴링:
+#   kiosk_tryon        → GET  /kiosk/seat/status    (★ NEW ★)
+#                      ← {seats: {"1":false, "2":true, ...}}
+#                         TryonPage SeatMap.set_seat_status() 에 전달
+# ══════════════════════════════════════════════════════════════
+
+# ── [9-1] Pydantic 모델 ──────────────────────────────────────
+
+class KioskTryonProgressRequest(BaseModel):           # ★ NEW ★
+    """
+    kiosk_tryon_delivery → POST /kiosk/tryon/progress
+    robot_id를 기준으로 현재 배송 진행 상태를 조회한다.
+    """
+    robot_id: str = "sshopy2"
+
+
+# ── [9-2] 키오스크 전용 WebSocket: /ws/kiosk/amr ─────────────
+
+# 키오스크 WebSocket 클라이언트 목록 (phone_ui의 _ws_clients 와 분리)
+_kiosk_ws_clients: list[WebSocket] = []               # ★ NEW ★
+
+
+@app.websocket("/ws/kiosk/amr")                       # ★ NEW ★
+async def ws_kiosk_amr(ws: WebSocket):
+    """
+    키오스크 시착 도착 알림 WebSocket.
+    kiosk_tryon_delivery.py 가 연결하여 AMR 도착 이벤트를 대기한다.
+
+    ■ phone_ui의 /ws/amr 와 별도 경로로 분리.
+      동일한 fleet 폴링 로직을 사용하되 _kiosk_ws_clients 로 관리.
+
+    수신 메시지 형식:
+      {
+        "type"      : "KIOSK_AMR_ARRIVE",
+        "robot_id"  : str,
+        "seat_id"   : int,
+        "product_id": str,
+      }
+
+    ■ kiosk_tryon_delivery.py 연동 포인트:
+      TryonDeliveryPage 에 WebSocket 클라이언트를 추가하고
+      수신 메시지 type == "KIOSK_AMR_ARRIVE" 일 때
+      self.notify_arrived() 를 호출하면 된다.
+    """
+    await ws.accept()
+    _kiosk_ws_clients.append(ws)
+    logger.info(f"[ws/kiosk/amr] 키오스크 연결 (총 {len(_kiosk_ws_clients)}대)")
+
+    last_stage_per_robot: dict[str, Optional[int]] = {}
+    try:
+        while True:
+            states = fleet.get_all_states()
+            for s in states:
+                rid = s["robot_id"]
+                cur = s.get("tryon_stage")
+                prev = last_stage_per_robot.get(rid)
+                # AT_TRYZONE(12) 진입 순간에만 1회 push
+                if cur == 12 and prev != 12:
+                    await ws.send_json({
+                        "type"      : "KIOSK_AMR_ARRIVE",
+                        "robot_id"  : rid,
+                        "seat_id"   : s.get("tryon_seat"),
+                        "product_id": s.get("tryon_product_id"),
+                    })
+                    logger.info(
+                        f"[ws/kiosk/amr] 도착 push → robot={rid} "
+                        f"seat={s.get('tryon_seat')}"
+                    )
+                last_stage_per_robot[rid] = cur
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"[ws/kiosk/amr] error: {e}")
+    finally:
+        if ws in _kiosk_ws_clients:
+            _kiosk_ws_clients.remove(ws)
+        logger.info(f"[ws/kiosk/amr] 키오스크 연결 해제 (남은 {len(_kiosk_ws_clients)}대)")
+
+
+# ── [9-3] 배송 진행률 폴링 엔드포인트 ────────────────────────
+
+@app.post("/kiosk/tryon/progress")                    # ★ NEW ★
+async def endpoint_kiosk_tryon_progress(req: KioskTryonProgressRequest):
+    """
+    키오스크 배송 진행률 폴링 엔드포인트.
+    kiosk_tryon_delivery.py 가 1초 간격으로 호출하여
+    TryonDeliveryPage.update_progress() 에 전달할 데이터를 받는다.
+
+    WebSocket(/ws/kiosk/amr) 과 병행하거나 WS 대신 단독으로 사용 가능.
+
+    ■ kiosk_tryon_delivery.py 연동 포인트:
+      QTimer(interval=1000) 에서 이 엔드포인트를 HTTP GET/POST 로 호출하고
+      응답의 progress_pct 값을 update_progress(pct*100, 100) 에 넘기면 된다.
+
+    input : { robot_id: str }
+    output: {
+        "robot_id"    : str,
+        "stage"       : int,    # fleet 내부 tryon_stage 값
+        "progress_pct": float,  # 0.0 ~ 1.0
+        "arrived"     : bool,   # stage == 12 (AT_TRYZONE)
+        "seat_id"     : int | None,
+    }
+    """
+    states = fleet.get_all_states()
+    target = next(
+        (s for s in states if s.get("robot_id") == req.robot_id),
+        None
+    )
+    if target is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"robot_id '{req.robot_id}' 를 찾을 수 없습니다."
+        )
+
+    stage        = target.get("tryon_stage") or 0
+    arrived      = (stage == 12)
+    # tryon_stage를 0.0~1.0 진행률로 변환 (stage 범위는 fleet 구현에 따라 조정)
+    # 현재 임시: stage / 12 로 선형 변환
+    progress_pct = min(stage / 12, 1.0) if stage else 0.0
+
+    logger.info(
+        f"[kiosk/tryon/progress] robot={req.robot_id} "
+        f"stage={stage} progress={progress_pct:.2f} arrived={arrived}"
+    )
+    return {
+        "robot_id"    : req.robot_id,
+        "stage"       : stage,
+        "progress_pct": progress_pct,
+        "arrived"     : arrived,
+        "seat_id"     : target.get("tryon_seat"),
+    }
+
+
+# ── [9-4] 좌석 현황 조회 엔드포인트 ──────────────────────────
+
+@app.get("/kiosk/seat/status")                        # ★ NEW ★
+async def endpoint_kiosk_seat_status():
+    """
+    키오스크 시착 좌석 현황 조회.
+    kiosk_tryon.py TryonPage 가 진입 시 1회 호출하고
+    이후 /ws/seat WebSocket 을 통해 실시간 갱신을 받는다.
+
+    ■ kiosk_tryon.py 연동 포인트:
+      TryonPage.__init__() 또는 showEvent() 에서 이 엔드포인트를 호출하고
+      응답을 SeatMap.set_seat_status(seats) 에 전달하면 된다.
+
+    ■ 기존 /ws/seat (■ 기존 재사용) 와 함께 사용:
+      - 초기값: GET /kiosk/seat/status
+      - 실시간 갱신: WS /ws/seat → SEAT_UPDATE 메시지
+
+    output: {
+        "seats": {"1": bool, "2": bool, "3": bool, "4": bool},
+        # True = 점유, False = 빈 자리
+        # YOLOResultServer.latest_seat_status 가 None 이면 전부 False 반환
+    }
+    """
+    raw = None
+    if _yolo_result_server:
+        raw = _yolo_result_server.latest_seat_status
+
+    # latest_seat_status 형식: tcp_main_ai.py 의 seat_status 메시지
+    # 예: [{"seat_id": 1, "occupied": true}, ...]
+    # → {"1": true, "2": false, ...} 형태로 변환
+    if raw and isinstance(raw, list):
+        seats = {str(item["seat_id"]): item.get("occupied", False) for item in raw}
+    else:
+        # 데이터 없음 → 전부 빈 자리로 반환 (안전한 기본값)
+        seats = {"1": False, "2": False, "3": False, "4": False}
+
+    return {"seats": seats}
+
+
+# ── [9-5] 재고 확인 엔드포인트 ──────────────────────────────
+
+class KioskStockCheckRequest(BaseModel):           # ★ NEW ★
+    """
+    kiosk_tryon.py → POST /kiosk/stock/check
+    시착 요청 직전 선택한 shoe_id + color + size 재고를 DB에서 재확인한다.
+    """
+    shoe_id: str
+    color: Optional[str] = None
+    size:  Optional[str] = None
+
+
+@app.post("/kiosk/stock/check")                    # ★ NEW ★
+async def endpoint_kiosk_stock_check(req: KioskStockCheckRequest):
+    """
+    시착 요청 직전 재고 확인 (TC 2-06 사전 검증).
+    shoes_inventory 에서 shoe_id + color + size 조합의 실재고를 합산하여 반환한다.
+
+    size 비교: DB 는 DECIMAL(4,1)/INT 저장값이고
+               클라이언트는 문자열로 전송하므로 float 정규화 후 비교한다.
+
+    input : { shoe_id, color(optional), size(optional) }
+    output: { "in_stock": bool, "stock": int }
+    """
+    def _norm(v) -> str:
+        try:
+            f = float(v)
+            return str(int(f)) if f == int(f) else str(f)
+        except Exception:
+            return str(v)
+
+    rows = get_shoe_information_by_shoe_id_from_inventory(req.shoe_id)
+    if not rows:
+        return {"in_stock": False, "stock": 0}
+
+    total = 0
+    for row in rows:
+        if req.color and (row.get("color") or "").strip() != req.color.strip():
+            continue
+        if req.size and _norm(row.get("size")) != _norm(req.size):
+            continue
+        total += int(row.get("stock") or 0)
+
+    logger.info(
+        f"[kiosk/stock/check] shoe={req.shoe_id} color={req.color} "
+        f"size={req.size} → stock={total}"
+    )
+    return {"in_stock": total > 0, "stock": total}
 
 
 # ══════════════════════════════════════════════════════════════
