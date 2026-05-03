@@ -100,6 +100,18 @@ function SmallBtn({ label, color = COLORS.blue, onClick }) {
   )
 }
 
+// ── 시나리오 stage 레이블 ─────────────────────────────────────────────────────
+
+const INBOUND_STAGE_LABELS = {
+  30: '입고위치 이동', 31: 'FrontJet 상차', 32: '창고 이동',
+  33: '스캔 대기', 34: 'WareJet 적재', 35: '홈 복귀',
+}
+
+const RETRIEVAL_STAGE_LABELS = {
+  20: '입구 이동', 21: 'FrontJet 상차', 22: '상품 식별 대기',
+  23: '창고 이동', 24: 'WareJet 적재', 25: 'DB복구 대기', 26: '홈 복귀',
+}
+
 // ── Preset positions (map frame, 2026-04-24 기준) ────────────────────────────
 // quaternion (oz, ow) → theta(yaw)
 const qToTheta = (oz, ow) => 2 * Math.atan2(oz, ow)
@@ -132,7 +144,12 @@ const ARRIVAL_THRESH = 0.30  // metres
 // ── Pinky card ────────────────────────────────────────────────────────────────
 
 function PinkyCard({ robot, addLog }) {
-  const { robot_id, connected, battery, pose, tryon_stage, tryon_seat } = robot
+  const {
+    robot_id, connected, battery, pose,
+    tryon_stage, tryon_seat,
+    inbound_stage, inbound_task_id,
+    retrieval_stage, retrieval_task_id,
+  } = robot
   const [goalX, setGoalX] = useState(String(HOME_POSE.x))
   const [goalY, setGoalY] = useState(String(HOME_POSE.y))
   const [goalFb, setGoalFb] = useState('')
@@ -141,6 +158,20 @@ function PinkyCard({ robot, addLog }) {
   const goalSentAtRef  = useRef(0)
   const armWorkingRef  = useRef(false)   // arm 작동 중 → 도착 감지 차단
   const cancelledRef   = useRef(false)   // 취소 여부
+
+  // 시나리오 1 (입고) 입력 상태
+  const [ibProductId, setIbProductId] = useState('NK-AF1')
+  const [ibSize, setIbSize]           = useState('270')
+  const [ibColor, setIbColor]         = useState('white')
+  const [ibQty, setIbQty]             = useState('1')
+  const [ibFb, setIbFb]               = useState('')
+  const [ibScanResult, setIbScanResult] = useState('{"product_id":"NK-AF1","warehouse_pos":"A-1-3"}')
+
+  // 시나리오 4 (회수) 입력 상태
+  const [rtProductId, setRtProductId] = useState('NK-AF1')
+  const [rtSize, setRtSize]           = useState('270')
+  const [rtColor, setRtColor]         = useState('white')
+  const [rtFb, setRtFb]               = useState('')
 
   // cancel delivery when robot disconnects
   useEffect(() => {
@@ -432,6 +463,206 @@ function PinkyCard({ robot, addLog }) {
                   }}
                   style={{ ...btnStyle, background: COLORS.red, flex: 1 }}
                 >🛑 시착 중단</button>
+              </div>
+            )}
+          </div>
+
+          {/* 시나리오 1 (입고) */}
+          <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 6 }}>
+              시나리오 1 (입고){' '}
+              {inbound_stage != null && (
+                <span style={{ color: COLORS.blue }}>
+                  ● {INBOUND_STAGE_LABELS[inbound_stage] ?? `stage ${inbound_stage}`}
+                </span>
+              )}
+            </div>
+            {inbound_stage == null ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <input
+                    value={ibProductId} onChange={e => setIbProductId(e.target.value)}
+                    placeholder="상품ID" style={{ ...inputStyle, flex: 2 }}
+                  />
+                  <input
+                    value={ibSize} onChange={e => setIbSize(e.target.value)}
+                    placeholder="사이즈" style={{ ...inputStyle, flex: 1 }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <input
+                    value={ibColor} onChange={e => setIbColor(e.target.value)}
+                    placeholder="색상" style={{ ...inputStyle, flex: 2 }}
+                  />
+                  <input
+                    value={ibQty} onChange={e => setIbQty(e.target.value)}
+                    placeholder="수량" style={{ ...inputStyle, flex: 1 }}
+                  />
+                </div>
+                <button
+                  onClick={async () => {
+                    setIbFb('...')
+                    try {
+                      const r = await fetch('/inbound/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          robot_id,
+                          items: [{ product_id: ibProductId, size: parseInt(ibSize) || 270, color: ibColor, quantity: parseInt(ibQty) || 1 }],
+                        }),
+                      }).then(r => r.json())
+                      if (r.ok) {
+                        addLog?.(`${robot_id} 입고 시작 (task: ${r.task_id})`, 'info')
+                        setIbFb('✓')
+                      } else {
+                        addLog?.(`${robot_id} 입고 실패: ${r.message}`, 'err')
+                        setIbFb(`✗ ${r.message}`)
+                      }
+                    } catch { setIbFb('✗ 오류') }
+                    setTimeout(() => setIbFb(''), 3000)
+                  }}
+                  style={{ ...btnStyle, background: COLORS.blue, width: '100%' }}
+                >📦 입고 시작{ibFb ? ` ${ibFb}` : ''}</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {inbound_stage === 33 /* SCAN_WAIT */ && (
+                  <>
+                    <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 2 }}>스캔 결과 JSON</div>
+                    <input
+                      value={ibScanResult} onChange={e => setIbScanResult(e.target.value)}
+                      style={{ ...inputStyle, width: '100%', fontFamily: 'monospace', fontSize: 11 }}
+                    />
+                    <button
+                      onClick={async () => {
+                        setIbFb('...')
+                        try {
+                          let scan = {}
+                          try { scan = JSON.parse(ibScanResult) } catch { scan = { product_id: ibProductId, warehouse_pos: 'A-1-3' } }
+                          const r = await fetch('/inbound/scan_complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ task_id: inbound_task_id, scan_result: scan }),
+                          }).then(r => r.json())
+                          addLog?.(r.ok ? `${robot_id} 스캔 완료 → WareJet 적재` : `스캔완료 실패: ${r.message}`, r.ok ? 'ok' : 'err')
+                          setIbFb(r.ok ? '✓' : `✗ ${r.message}`)
+                        } catch { setIbFb('✗ 오류') }
+                        setTimeout(() => setIbFb(''), 3000)
+                      }}
+                      style={{ ...btnStyle, background: COLORS.green, width: '100%' }}
+                    >🔍 스캔 완료 통보{ibFb ? ` ${ibFb}` : ''}</button>
+                  </>
+                )}
+                <button
+                  onClick={async () => {
+                    try {
+                      const r = await fetch(`/inbound/cancel?task_id=${inbound_task_id}`, { method: 'POST' }).then(r => r.json())
+                      addLog?.(r.ok ? `${robot_id} 입고 취소` : `입고취소 실패: ${r.message}`, r.ok ? 'warn' : 'err')
+                    } catch { addLog?.('입고취소 오류', 'err') }
+                  }}
+                  style={{ ...btnStyle, background: COLORS.red, width: '100%' }}
+                >🛑 입고 취소</button>
+              </div>
+            )}
+          </div>
+
+          {/* 시나리오 4 (회수) */}
+          <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 6 }}>
+              시나리오 4 (회수){' '}
+              {retrieval_stage != null && (
+                <span style={{ color: COLORS.purple }}>
+                  ● {RETRIEVAL_STAGE_LABELS[retrieval_stage] ?? `stage ${retrieval_stage}`}
+                </span>
+              )}
+            </div>
+            {retrieval_stage == null ? (
+              <button
+                onClick={async () => {
+                  setRtFb('...')
+                  try {
+                    const r = await fetch(`/retrieval/start?robot_id=${robot_id}`, { method: 'POST' }).then(r => r.json())
+                    if (r.ok) {
+                      addLog?.(`${robot_id} 회수 시작 (task: ${r.task_id})`, 'info')
+                      setRtFb('✓')
+                    } else {
+                      addLog?.(`${robot_id} 회수 실패: ${r.message}`, 'err')
+                      setRtFb(`✗ ${r.message}`)
+                    }
+                  } catch { setRtFb('✗ 오류') }
+                  setTimeout(() => setRtFb(''), 3000)
+                }}
+                style={{ ...btnStyle, background: COLORS.purple, width: '100%' }}
+              >🔄 회수 시작{rtFb ? ` ${rtFb}` : ''}</button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {retrieval_stage === 22 /* IDENTIFY */ && (
+                  <>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input
+                        value={rtProductId} onChange={e => setRtProductId(e.target.value)}
+                        placeholder="상품ID" style={{ ...inputStyle, flex: 2 }}
+                      />
+                      <input
+                        value={rtSize} onChange={e => setRtSize(e.target.value)}
+                        placeholder="사이즈" style={{ ...inputStyle, flex: 1 }}
+                      />
+                    </div>
+                    <input
+                      value={rtColor} onChange={e => setRtColor(e.target.value)}
+                      placeholder="색상" style={{ ...inputStyle }}
+                    />
+                    <button
+                      onClick={async () => {
+                        setRtFb('...')
+                        try {
+                          const r = await fetch('/retrieval/identify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              task_id: retrieval_task_id,
+                              product_id: rtProductId,
+                              size: parseInt(rtSize) || null,
+                              color: rtColor || null,
+                              quantity: 1,
+                            }),
+                          }).then(r => r.json())
+                          addLog?.(r.ok ? `${robot_id} 상품 식별 → 창고 이동` : `식별 실패: ${r.message}`, r.ok ? 'ok' : 'err')
+                          setRtFb(r.ok ? '✓' : `✗ ${r.message}`)
+                        } catch { setRtFb('✗ 오류') }
+                        setTimeout(() => setRtFb(''), 3000)
+                      }}
+                      style={{ ...btnStyle, background: COLORS.green, width: '100%' }}
+                    >🔎 상품 식별 완료{rtFb ? ` ${rtFb}` : ''}</button>
+                  </>
+                )}
+                {retrieval_stage === 25 /* DB_RESTORE */ && (
+                  <button
+                    onClick={async () => {
+                      setRtFb('...')
+                      try {
+                        const r = await fetch('/retrieval/db_restored', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ task_id: retrieval_task_id }),
+                        }).then(r => r.json())
+                        addLog?.(r.ok ? `${robot_id} DB 복구 완료 → 홈 복귀` : `DB복구 실패: ${r.message}`, r.ok ? 'ok' : 'err')
+                        setRtFb(r.ok ? '✓' : `✗ ${r.message}`)
+                      } catch { setRtFb('✗ 오류') }
+                      setTimeout(() => setRtFb(''), 3000)
+                    }}
+                    style={{ ...btnStyle, background: COLORS.green, width: '100%' }}
+                  >🗄 DB 복구 완료{rtFb ? ` ${rtFb}` : ''}</button>
+                )}
+                <button
+                  onClick={async () => {
+                    try {
+                      const r = await fetch(`/retrieval/cancel?task_id=${retrieval_task_id}`, { method: 'POST' }).then(r => r.json())
+                      addLog?.(r.ok ? `${robot_id} 회수 취소` : `회수취소 실패: ${r.message}`, r.ok ? 'warn' : 'err')
+                    } catch { addLog?.('회수취소 오류', 'err') }
+                  }}
+                  style={{ ...btnStyle, background: COLORS.red, width: '100%' }}
+                >🛑 회수 취소</button>
               </div>
             )}
           </div>

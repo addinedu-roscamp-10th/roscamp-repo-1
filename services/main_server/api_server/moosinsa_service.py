@@ -761,6 +761,23 @@ async def lifespan(app: FastAPI):
     서버 시작/종료 생명주기 관리.
       시작: 각 클라이언트 인스턴스 생성 및 health check → ScenarioOrchestrator 주입
       종료: 로그 출력 (필요 시 리소스 정리 추가)
+
+    [fleet 콜백 등록 안내]
+    역할: 서버 시작 시 robot_manager(fleet)의 콜백 슬롯에 함수를 등록해야
+          fleet이 시나리오 stage 변화·완료 이벤트를 moosinsa_service로 전달할 수 있다.
+    현재 상태: fleet.connect_all() / fleet.start_reconnect_loop() 만 호출하며
+               콜백은 아직 등록되지 않음 — 아래 TODO 항목 참조.
+
+    TODO: 입고(Scene 1) 콜백 등록
+        fleet.on_inbound_stage_change = _on_inbound_stage_change
+        fleet.on_inbound_complete     = _on_inbound_complete
+    TODO: 회수(Scene 4) 콜백 등록
+        fleet.on_retrieval_stage_change = _on_retrieval_stage_change
+        fleet.on_retrieval_complete     = _on_retrieval_complete
+    TODO: DB 창고 위치 조회 콜백 등록 (Scene 4, TC 4-12)
+        fleet.get_warehouse_pos = _db_get_warehouse_pos
+    각 콜백 함수는 fleet이 stage 전이 시 동기 스레드에서 호출하므로
+    asyncio 이벤트가 필요하면 loop.call_soon_threadsafe() 로 감싸야 한다.
     """
     global _orchestrator, _main_loop
 
@@ -817,6 +834,18 @@ async def lifespan(app: FastAPI):
     # )
 
     # ── fleet 초기화 추가 ──────────────────────────────
+    # fleet.connect_all()  : 설정(fms/config.py ROBOTS)에 등록된 모든 로봇에
+    #                         rosbridge WebSocket 연결을 시도한다 (blocking, executor 실행).
+    # fleet.start_reconnect_loop(): 백그라운드 스레드에서 5초마다 연결 상태를 점검하고
+    #                               끊어진 로봇을 자동 재연결한다.
+    #
+    # [TODO] 아래 콜백 등록을 이 블록 안에 추가해야 Scene 1/4 이벤트가 서비스로 전달된다:
+    #   fleet.on_inbound_stage_change  = _on_inbound_stage_change   # Scene 1 stage 변화
+    #   fleet.on_inbound_complete      = _on_inbound_complete        # Scene 1 완료
+    #   fleet.on_retrieval_stage_change= _on_retrieval_stage_change  # Scene 4 stage 변화
+    #   fleet.on_retrieval_complete    = _on_retrieval_complete      # Scene 4 완료
+    #   fleet.get_warehouse_pos        = _db_get_warehouse_pos       # TC 4-12 DB 위치 조회
+    #   (fleet이 product_id로 창고 위치를 조회할 때 이 콜백을 동기 호출한다)
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, fleet.connect_all)
     fleet.start_reconnect_loop()
@@ -935,6 +964,21 @@ async def ws_amr(websocket: WebSocket):
 
 
 async def broadcast_seat_status(seats):
+    """
+    [브로드캐스트 헬퍼] /ws/seat WebSocket 구독자 전체에게 좌석 현황을 push한다.
+
+    역할: YOLO 카메라가 갱신한 좌석 점유 정보를 실시간으로 클라이언트에 전달한다.
+    호출 시점: YOLOResultServer가 새 seat_status 메시지를 수신할 때 asyncio loop를 통해 호출.
+    요청 데이터: seats — [{"seat_id": int, "occupied": bool}, ...] 형태의 리스트
+    반환/응답: {type: "SEAT_UPDATE", data: seats} 를 _seat_clients 전체에 send_json
+              전송 실패 클라이언트는 _seat_clients에서 자동 제거.
+
+    [TODO] 입고(Scene 1) 및 회수(Scene 4) stage 변화 브로드캐스트도 동일 패턴으로 구현 필요:
+      async def broadcast_inbound_stage(task_dict): ...   # on_inbound_stage_change 콜백에서 호출
+      async def broadcast_retrieval_stage(task_dict): ... # on_retrieval_stage_change 콜백에서 호출
+    관제 GUI(PySide6)나 관리자 화면이 /ws/inbound, /ws/retrieval 등을 구독하면
+    fleet에서 stage 전이 시마다 실시간 업데이트를 받을 수 있다.
+    """
     message = {
         "type": "SEAT_UPDATE",
         "data": seats
@@ -1086,6 +1130,34 @@ def find_shoe_info(
 #   - phone_ui → POST /pickup/complete → 회수존 → 홈 복귀
 # ============================================================================
 
+# TODO: 시나리오 1(입고) 트리거 엔드포인트 미구현
+#   현재 moosinsa_service.py에는 입고(Scene 1) 전용 HTTP 엔드포인트가 없다.
+#   fms/main.py(또는 별도 관제 서버)의 /inbound/start 엔드포인트를 참조하여
+#   아래와 같은 엔드포인트를 추가해야 한다:
+#
+#   POST /inbound/start
+#     body: {robot_id, items: [{product_id, size, color, quantity}]}
+#     동작: fleet.start_inbound(robot_id, items) 호출
+#           → SShopy가 입고 위치(FrontJet) → 창고(WareJet) → 홈 순으로 자동 이동
+#     응답: {success, task_id, robot_id}
+#
+#   GET  /inbound/status/{task_id}
+#     동작: fleet.get_inbound_task(task_id) 조회 → stage, completed 반환
+#     응답: InboundTask.to_dict()
+
+# TODO: 시나리오 4(회수) 트리거 엔드포인트 미구현
+#   현재 moosinsa_service.py에는 회수(Scene 4) 전용 HTTP 엔드포인트가 없다.
+#   fms/main.py의 /retrieval/start 엔드포인트를 참조하여 아래를 추가해야 한다:
+#
+#   POST /retrieval/start
+#     body: {robot_id, product_id}
+#     동작: fleet.start_retrieval(robot_id, product_id) 호출
+#           → SShopy가 입구 카운터 → 창고 → 홈 순으로 이동하며 상품 회수
+#     fleet 내부: RETRIEVAL_STAGE_TO_ENTRANCE(20) → FRONTJET_LOAD(21) →
+#                 IDENTIFY(22) → TO_WAREHOUSE(23) → WAREJET_STORE(24) →
+#                 DB_RESTORE(25) → TO_HOME(26) 순으로 stage 전이
+#     응답: {success, task_id, robot_id}
+
 class _TryonReq(BaseModel):
     # ■ KIOSK 사용 — kiosk_tryon.py TryonPage._on_request_clicked() 에서 POST /tryon/request 호출
     # product_id : ShoeSearchResult 상품 ID (현재 kiosk는 product name 사용 중 → TODO: ID로 통일)
@@ -1113,6 +1185,15 @@ async def endpoint_tryon_request(req: _TryonReq):
     ■ 수정 필요 — robot_id 를 클라이언트가 지정하는 현재 구조는
       다중 키오스크 환경에서 충돌 위험이 있음.
       서버 측 가용 로봇 자동 배정 로직 추가를 권장한다. (TODO)
+
+    [데이터 흐름]
+    역할: 키오스크에서 고객의 시착 요청을 수신하여 로봇에게 창고 → 시착존 이동을 명령한다.
+    요청 데이터: product_id(상품 ID), color(색상), size(사이즈),
+                 seat_id(시착존 번호 1~4), robot_id(로봇 ID, 기본값 "sshopy2")
+    fleet 호출: fleet.start_tryon(robot_id, seat_id, product_id, color, size)
+                → SShopy가 창고(TRYON_WAREJET)로 이동 후 WareJet 상차 → 시착존 이동 시작
+    반환/응답: 성공 시 {success: True, robot_id, seat_id, product_id}
+              실패(좌석 사용중/로봇 작업중/미연결) 시 HTTP 409 + 에러 메시지
     """
     ok, msg = fleet.start_tryon(
         robot_id=req.robot_id,
@@ -1149,6 +1230,15 @@ async def endpoint_pickup_complete(robot_id: str = "sshopy2"):
       다중 키오스크에서 어떤 로봇인지 식별하기 어려움.
       /tryon/request 응답으로 받은 robot_id 를 body(JSON)로 전달하는
       방식으로 변경을 권장한다. (TODO)
+
+    [데이터 흐름]
+    역할: 고객이 '수령 완료' 버튼을 누르면 해당 로봇의 시착존 좌석을 해제하고
+          회수존(TRYON_FRONTJET) → 홈(TRYON_HOME) 복귀를 명령한다.
+    요청 데이터: robot_id (query param, 기본값 "sshopy2")
+    fleet 호출: fleet.complete_pickup(robot_id)
+                → 좌석 해제 + SShopy TRYON_STAGE_TO_FRONTJET → TRYON_STAGE_TO_HOME 전이
+    반환/응답: 성공 시 {success: True, robot_id}
+              실패(로봇 미발견/이미 idle) 시 HTTP 409 + 에러 메시지
     """
     ok, msg = fleet.complete_pickup(robot_id)
     if not ok:
@@ -1463,6 +1553,14 @@ async def ws_kiosk_amr(ws: WebSocket):
       TryonDeliveryPage 에 WebSocket 클라이언트를 추가하고
       수신 메시지 type == "KIOSK_AMR_ARRIVE" 일 때
       self.notify_arrived() 를 호출하면 된다.
+
+    [데이터 흐름]
+    역할: 키오스크 전용 WebSocket — 1초마다 fleet.get_all_states()를 폴링하여
+          로봇의 tryon_stage가 12(AT_TRYZONE)로 처음 바뀌는 순간 도착 알림을 push한다.
+    요청 데이터: WebSocket 연결 요청만 수신 (별도 메시지 body 없음)
+    fleet 호출: fleet.get_all_states() — 전체 로봇의 현재 상태 딕셔너리 리스트 반환
+    반환/응답: stage==12 첫 진입 시 {type:"KIOSK_AMR_ARRIVE", robot_id, seat_id, product_id} push
+              연결 해제 시 _kiosk_ws_clients에서 자동 제거
     """
     await ws.accept()
     _kiosk_ws_clients.append(ws)
@@ -1523,6 +1621,15 @@ async def endpoint_kiosk_tryon_progress(req: KioskTryonProgressRequest):
         "arrived"     : bool,   # stage == 12 (AT_TRYZONE)
         "seat_id"     : int | None,
     }
+
+    [데이터 흐름]
+    역할: 키오스크 시착 진행 상태를 HTTP 폴링 방식으로 제공한다.
+          WS(/ws/kiosk/amr)와 병용하거나 단독으로 진행 바(progress bar) 업데이트에 사용.
+    요청 데이터: {robot_id: str} — 조회할 로봇 ID
+    fleet 호출: fleet.get_all_states() → robot_id 일치 항목에서 tryon_stage 추출
+               tryon_stage를 0~12 선형 변환하여 progress_pct(0.0~1.0)로 산출
+    반환/응답: {robot_id, stage, progress_pct, arrived(stage==12 여부), seat_id}
+              robot_id 미발견 시 HTTP 404
     """
     states = fleet.get_all_states()
     target = next(

@@ -1,6 +1,3 @@
-# import sys, os
-# sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
-
 import asyncio
 import io
 from contextlib import asynccontextmanager
@@ -28,8 +25,8 @@ app = FastAPI(title="Moosinsa Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],   # 개발 환경 — vite 포트(5173/5174 등)가 바뀌어도 허용
+    allow_credentials=False,  # allow_origins="*" 일 때는 False 필수
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -178,6 +175,114 @@ def map_image():
 @app.get("/map/meta")
 def map_meta():
     return MAP_META
+
+
+# ── 입고 시나리오 (Scene 1) ───────────────────────────────────────────────────
+class InboundItemModel(BaseModel):
+    product_id: str
+    size: int
+    color: str
+    quantity: int = 1
+
+
+class InboundStartCmd(BaseModel):
+    items: list[InboundItemModel]
+    robot_id: str = "sshopy2"
+
+
+class ScanCompleteCmd(BaseModel):
+    task_id: str
+    scan_result: dict  # {"product_id": ..., "warehouse_pos": ...}
+
+
+@app.post("/inbound/start")
+def inbound_start(cmd: InboundStartCmd):
+    """입고 시나리오 시작 — FrontJet 상차 → 창고 이동 → 바코드 스캔 대기."""
+    items = [i.dict() for i in cmd.items]
+    ok_f, msg, task_id = fleet.start_inbound(items=items, robot_id=cmd.robot_id)
+    return {"ok": ok_f, "message": msg, "task_id": task_id, "robot_id": cmd.robot_id}
+
+
+@app.post("/inbound/scan_complete")
+def inbound_scan_complete(cmd: ScanCompleteCmd):
+    """바코드 스캔 완료 통보 — WareJet 적재 후 홈 복귀 트리거."""
+    ok_f, msg = fleet.notify_scan_complete(cmd.task_id, cmd.scan_result)
+    return {"ok": ok_f, "message": msg, "task_id": cmd.task_id}
+
+
+@app.post("/inbound/cancel")
+def inbound_cancel(task_id: str):
+    """진행 중인 입고 태스크 취소."""
+    ok_f, msg = fleet.cancel_inbound(task_id)
+    return {"ok": ok_f, "message": msg, "task_id": task_id}
+
+
+@app.get("/inbound/status/{task_id}")
+def inbound_status(task_id: str):
+    """특정 입고 태스크 상태 조회."""
+    return fleet.get_inbound_status(task_id)
+
+
+@app.get("/inbound/all")
+def inbound_all():
+    """전체 입고 태스크 목록 조회."""
+    return {"tasks": fleet.get_all_inbound_tasks()}
+
+
+# ── 회수 시나리오 (Scene 4) ───────────────────────────────────────────────────
+class RetrievalIdentifyCmd(BaseModel):
+    task_id: str
+    product_id: str
+    size: int | None = None
+    color: str | None = None
+    quantity: int = 1
+
+
+class RetrievalDbRestoredCmd(BaseModel):
+    task_id: str
+
+
+@app.post("/retrieval/start")
+def retrieval_start(robot_id: str = "sshopy2"):
+    """회수 시나리오 시작 — 입구 카운터 이동 → FrontJet 상차 → 상품 식별 대기."""
+    ok_f, msg, task_id = fleet.start_retrieval(robot_id=robot_id)
+    return {"ok": ok_f, "message": msg, "task_id": task_id, "robot_id": robot_id}
+
+
+@app.post("/retrieval/identify")
+def retrieval_identify(cmd: RetrievalIdentifyCmd):
+    """상품 식별 완료 통보 — 창고 이동 → WareJet 적재 → DB 복구 대기 트리거."""
+    ok_f, msg = fleet.identify_product(
+        cmd.task_id, cmd.product_id,
+        size=cmd.size, color=cmd.color, quantity=cmd.quantity,
+    )
+    return {"ok": ok_f, "message": msg, "task_id": cmd.task_id}
+
+
+@app.post("/retrieval/db_restored")
+def retrieval_db_restored(cmd: RetrievalDbRestoredCmd):
+    """DB 복구 완료 통보 — 홈 복귀 트리거."""
+    ok_f, msg = fleet.notify_db_restored(cmd.task_id)
+    return {"ok": ok_f, "message": msg, "task_id": cmd.task_id}
+
+
+@app.post("/retrieval/cancel")
+def retrieval_cancel(task_id: str):
+    """진행 중인 회수 태스크 취소."""
+    ok_f, msg = fleet.cancel_retrieval(task_id)
+    return {"ok": ok_f, "message": msg, "task_id": task_id}
+
+
+@app.get("/retrieval/status/{task_id}")
+def retrieval_status(task_id: str):
+    """특정 회수 태스크 상태 조회."""
+    return fleet.get_retrieval_status(task_id)
+
+
+@app.get("/retrieval/all")
+def retrieval_all():
+    """전체 회수 태스크 목록 조회."""
+    return {"tasks": fleet.get_all_retrieval_tasks()}
 
 
 @app.websocket("/ws/robots")
