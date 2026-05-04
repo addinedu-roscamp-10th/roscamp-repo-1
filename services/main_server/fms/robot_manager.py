@@ -415,7 +415,6 @@ class RobotManager:
             self._post_arrive(state)
             
 
-
         elif s == TRYON_STAGE_TO_FRONTJET:
             # 회수존 도착 → front_jet 그리퍼 → 홈 복귀
             print(f"[fleet] {robot_id} (시착) 회수존 도착 → front_jet 팔 동작")
