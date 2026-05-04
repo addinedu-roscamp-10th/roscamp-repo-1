@@ -674,7 +674,7 @@ function PinkyCard({ robot, addLog }) {
 
 // ── WareJet panel (camera + teaching) ────────────────────────────────────────
 
-const ARM_URL = '/arm-server'  // vite proxy → http://192.168.1.115:8001
+const ARM_URL = '/arm-server'  // vite proxy → http://192.168.1.115:8002
 const JOINT_LIMIT = 130
 
 function WareJetPanel() {

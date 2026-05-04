@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# FMS 전체 스택 시작: rosbridge (5 domains) → FastAPI (port 8000)
-# 실행 위치: services/fms/
+# FMS 전체 스택 시작: rosbridge (5 domains) → FastAPI (port 8002)
+# 실행 위치: services/main_server/fms/
 
 set -eo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,12 +11,12 @@ bash "$SCRIPT_DIR/start_rosbridge.sh"
 echo ""
 echo "=== Step 2: FastAPI FMS 백엔드 (port 8002) ==="
 cd "$SCRIPT_DIR"
-nohup python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8001 \
+nohup python3 -m uvicorn fms.main:app --host 0.0.0.0 --port 8002 \
     > /tmp/fms.log 2>&1 &
 FMS_PID=$!
 echo "  PID=$FMS_PID  log=/tmp/fms.log"
 sleep 3
-curl -s http://localhost:8001/health || true
+curl -s http://localhost:8002/health || true
 
 echo ""
 echo "=== Step 3: React Fleet UI (port 5174) ==="

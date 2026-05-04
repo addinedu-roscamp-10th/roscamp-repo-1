@@ -1034,7 +1034,7 @@ class RobotManager:
         ).start()
         return True, "ok"
 
-    def cancel_inbound(self, task_id: str) -> bool:
+    def cancel_inbound(self, task_id: str) -> tuple[bool, str]:
         """
         역할: 입고 태스크를 강제 취소한다.
         입력: task_id
@@ -1042,18 +1042,18 @@ class RobotManager:
             1. task 존재·완료 여부 확인
             2. _fail_inbound()로 오류 기록 + 로봇 idle 복원
             3. goal_pose(현재 위치)로 Nav2 목표 취소, cmd_vel(0,0)으로 즉시 정지
-        출력: True(취소 성공) 또는 False(task 없음/이미 완료)
+        출력: (True, "ok") 또는 (False, 오류 메시지)
         """
         task = self._inbound_tasks.get(task_id)
         if not task or task.completed:
-            return False
+            return False, "task 없음 또는 이미 완료"
         self._fail_inbound(task, "수동 취소")
         state = self._states.get(task.robot_id)
         if state and state.pose:
             self.goal_pose(task.robot_id, state.pose["x"], state.pose["y"], 0.0)
         self.cmd_vel(task.robot_id, 0.0, 0.0)
         print(f"[fleet] (입고) {task_id} 취소됨")
-        return True
+        return True, "ok"
 
     def get_inbound_status(self, task_id: str) -> Optional[dict]:
         """
@@ -1371,7 +1371,7 @@ class RobotManager:
         print(f"[fleet] (회수) {task_id} DB 복구 완료 → 홈 복귀")
         return True, "ok"
 
-    def cancel_retrieval(self, task_id: str) -> bool:
+    def cancel_retrieval(self, task_id: str) -> tuple[bool, str]:
         """
         역할: 회수 태스크를 강제 취소한다.
         입력: task_id
@@ -1379,11 +1379,11 @@ class RobotManager:
             1. task 존재·완료 여부 확인
             2. _fail_retrieval()로 오류 기록 + 로봇 idle 복원
             3. cmd_vel(0,0)으로 즉시 정지, goal_pose(현재 위치)로 Nav2 목표 취소
-        출력: True(취소 성공) 또는 False(task 없음/이미 완료)
+        출력: (True, "ok") 또는 (False, 오류 메시지)
         """
         task = self._retrieval_tasks.get(task_id)
         if not task or task.completed:
-            return False
+            return False, "task 없음 또는 이미 완료"
         self._fail_retrieval(task, "수동 취소")
         state = self._states.get(task.robot_id)
         if state:
@@ -1391,7 +1391,7 @@ class RobotManager:
             if state.pose:
                 self.goal_pose(task.robot_id, state.pose["x"], state.pose["y"], 0.0)
         print(f"[fleet] (회수) {task_id} 취소됨")
-        return True
+        return True, "ok"
 
     def cancel_retrieval_by_robot(self, robot_id: str) -> bool:
         """robot_id 기준으로 진행 중 회수 task 취소."""
