@@ -17,7 +17,7 @@ export default function ArrivalModal({ open, onClose, type = 'success' }: Props)
         <div className="arrival-top-text">
           {isFail
             ? '시착 요청 처리 중 문제가 발생했습니다.'
-            : 'Shoppy가 상품을 가져왔습니다!'}
+            : '쇼피가 상품을 가져왔습니다!'}
         </div>
 
         <div className={`arrival-success-box ${isFail ? 'fail' : ''}`}>
