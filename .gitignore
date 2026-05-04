@@ -168,3 +168,6 @@ log/
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime logs
+nohup.out
