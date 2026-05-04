@@ -143,8 +143,8 @@ controller_server:
       regulated_linear_scaling_min_radius: 0.3 #0.5
       regulated_linear_scaling_min_speed: 0.03 #0.05
       use_cost_regulated_linear_velocity_scaling: false #곡률기반 파라미터 조정 -  코너에서 회전할때 감속하는 기능인데 속도가 이미 작기때문에 필요x
-      cost_scaling_dist: 0.15 #0.3
-      cost_scaling_gain: 1.5  #1.5
+      #cost_scaling_dist: 0.15 #0.3
+      #cost_scaling_gain: 1.5  #1.5
 
 
 local_costmap:
@@ -159,7 +159,7 @@ local_costmap:
       height: 3 #3
       resolution: 0.01 #0.05
       #robot_radius: 0.1
-      footprint: '[[0.03, 0.06], [0.03, -0.06], [-0.06, -0.06], [-0.06, 0.06]]' #왼앞, 오른앞, 왼뒤, 오른뒤
+      footprint: '[[0.04, 0.05], [0.04, -0.05], [-0.07, -0.05], [-0.07, 0.05]]' #왼앞, 오른앞, 왼뒤, 오른뒤
       plugins: ["voxel_layer", "inflation_layer"]
       keepout_filter:               # ★ 추가
         plugin: "nav2_costmap_2d::KeepoutFilter"
@@ -205,7 +205,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_footprint
       #robot_radius: 0.05
-      footprint: '[[0.06, 0.06], [0.06, -0.06], [-0.06, -0.06], [-0.06, 0.06]]'
+      footprint: '[[0.06, 0.05], [0.06, -0.05], [-0.06, -0.05], [-0.06, 0.05]]'
       resolution: 0.01 #0.05
       track_unknown_space: true
       plugins: ["static_layer", "keepout_static_layer", "obstacle_layer", "inflation_layer"]
