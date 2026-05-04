@@ -412,7 +412,7 @@ class RobotManager:
             state.tryon_stage = TRYON_STAGE_AT_TRYZONE
             print(f"[fleet] {robot_id} (시착) 시착존 {state.tryon_seat} 도착 — 고객 수령 대기")
             # NOTE: '도착' 이벤트는 /ws/robots WS push로 phone_ui가 자동 감지
-
+            self._post_arrive(state)
             
 
 
@@ -477,7 +477,7 @@ class RobotManager:
     def _post_arrive(self, state: _RobotState):
         """도착 시 MOOsinsa 서버에 POST 요청."""
         ip = os.getenv("MOOSIONSA_MAIN_SERVER_IP")
-        port = os.getenv("OOSIONSA_MAIN_SERVER_PORT")
+        port = int(os.getenv("MOOSIONSA_MAIN_SERVER_PORT") or 0)
         if not ip or not port:
             print(f"[fleet] {state.robot_id} _post_arrive: MOOSIONSA_MAIN_SERVER_IP or PORT not set")
             return
@@ -552,6 +552,7 @@ class RobotManager:
         시착존에서 대기 중인 로봇을 좌석 해제 후 홈/대기위치로 직접 복귀시킨다.
         (회수존은 거치지 않음 — Scene 2 시나리오 단순화)
         """
+        
         state = self._states.get(robot_id)
         if not state:
             return False, f"{robot_id} 없음"
