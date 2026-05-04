@@ -22,8 +22,12 @@ import threading
 import time
 import roslibpy
 import paramiko
+import requests
+from dotenv import load_dotenv
 
 from fms.config import ROBOTS
+
+load_dotenv()
 
 CONNECT_TIMEOUT    = 4   # seconds to wait for initial / reconnect
 RECONNECT_INTERVAL = 5   # seconds between reconnect sweeps
@@ -409,6 +413,9 @@ class RobotManager:
             print(f"[fleet] {robot_id} (시착) 시착존 {state.tryon_seat} 도착 — 고객 수령 대기")
             # NOTE: '도착' 이벤트는 /ws/robots WS push로 phone_ui가 자동 감지
 
+            
+
+
         elif s == TRYON_STAGE_TO_FRONTJET:
             # 회수존 도착 → front_jet 그리퍼 → 홈 복귀
             print(f"[fleet] {robot_id} (시착) 회수존 도착 → front_jet 팔 동작")
@@ -466,6 +473,20 @@ class RobotManager:
             # 홈 도착 → 배달 완료
             state.delivery_stage = None
             print(f"[fleet] {robot_id} 홈 복귀 완료 — 배달 시나리오 종료")
+
+    def _post_arrive(self, state: _RobotState):
+        """도착 시 MOOsinsa 서버에 POST 요청."""
+        ip = os.getenv("MOOSIONSA_MAIN_SERVER_IP")
+        port = os.getenv("OOSIONSA_MAIN_SERVER_PORT")
+        if not ip or not port:
+            print(f"[fleet] {state.robot_id} _post_arrive: MOOSIONSA_MAIN_SERVER_IP or PORT not set")
+            return
+        url = f"http://{ip}:{port}/amr/arrive"
+        try:
+            response = requests.post(url, json={"robot_id": state.robot_id}, timeout=5.0)
+            print(f"[fleet] {state.robot_id} posted arrive: {response.status_code}")
+        except Exception as e:
+            print(f"[fleet] {state.robot_id} _post_arrive error: {e}")
 
     # ── 시착 시나리오 (Scene 2) ───────────────────────────────────────────────
 
