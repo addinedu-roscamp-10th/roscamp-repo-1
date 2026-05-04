@@ -157,9 +157,9 @@ local_costmap:
       rolling_window: true
       width: 3 #3
       height: 3 #3
-      resolution: 0.005 #0.05
+      resolution: 0.01 #0.05
       #robot_radius: 0.1
-      footprint: '[[0.03, 0.05], [0.03, -0.05], [-0.06, -0.05], [-0.06, 0.05]]'
+      footprint: '[[0.03, 0.06], [0.03, -0.06], [-0.06, -0.06], [-0.06, 0.06]]' #왼앞, 오른앞, 왼뒤, 오른뒤
       plugins: ["voxel_layer", "inflation_layer"]
       keepout_filter:               # ★ 추가
         plugin: "nav2_costmap_2d::KeepoutFilter"
@@ -235,7 +235,7 @@ global_costmap:
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 8.0 #3.0
+        cost_scaling_factor: 10.0 #3.0
         inflation_radius: 0.20 #1.0 #0.15
       always_send_full_costmap: True
       keepout_filter:
