@@ -44,7 +44,7 @@ export default function TryOnModal({
 
         <div className="tryon-moving-area">
           <div className="tryon-track">
-            <div className="tryon-shoppy">🤖</div>
+            <div className="tryon-sshopy">🤖</div>
             <div className="tryon-shoe-target">👟</div>
           </div>
 

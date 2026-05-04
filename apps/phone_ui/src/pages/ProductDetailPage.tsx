@@ -469,7 +469,7 @@ export default function ProductDetailPage() {
    *   - 도착 감지: WS {API}/ws/amr → AMR_ARRIVE → ArrivalModal 자동 표시
    *   - 수령 완료: ArrivalModal onClose에서 POST {API}/pickup/complete
    * ============================================================ */
-  const TRYON_ROBOT_ID = 'sshopy1';   // 임시 하드코딩
+  const TRYON_ROBOT_ID = 'sshopy2';   // 임시 하드코딩
 
   const handleTryOnRequest = async () => {
     if (!API) {
@@ -508,10 +508,12 @@ export default function ProductDetailPage() {
 
   // 수령 완료 (ArrivalModal "수령 완료" 버튼 클릭 시)
   const handlePickupComplete = async () => {
+
     setIsArriveOpen(false);
     if (!API) return;
+
     try {
-      const res = await fetch(`${API}/pickup/complete?robot_id=${TRYON_ROBOT_ID}`, {
+      const res = await fetch(`${API}/pickup/complete?robot_id=${encodeURIComponent(TRYON_ROBOT_ID)}`, {
         method: 'POST',
       });
       if (!res.ok) {
@@ -716,7 +718,7 @@ export default function ProductDetailPage() {
       {/* 도착 */}
       <ArrivalModal
         open={isArriveOpen}
-        onClose={() => setIsArriveOpen(false)}
+        onClose={handlePickupComplete}
       />
 
       {/* 실패 */}
