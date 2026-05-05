@@ -30,16 +30,12 @@ from dotenv import load_dotenv
 
 from fms.config import ROBOTS
 
-<<<<<<< HEAD
-load_dotenv()
-=======
 # [STUB] .env의 ROS_STUB=1 시 rosbridge/SSH 없이 동작하는 가상 모드
 # connect_all → 로봇을 connected로 마킹, goal_pose → 2초 후 가상 도착,
 # _ssh_exec → 0.5초 대기 후 성공 반환
 _ROS_STUB           = os.getenv("ROS_STUB", "0") == "1"
 _STUB_ARRIVAL_DELAY = 2.0   # 가상 이동 완료까지의 대기 시간 (초)
 _STUB_SSH_DELAY     = 0.5   # 가상 팔 동작 시간 (초)
->>>>>>> 24e3c98 (Feat: 시나리오1, 4 테스트 코드)
 
 CONNECT_TIMEOUT    = 4   # seconds to wait for initial / reconnect
 RECONNECT_INTERVAL = 5   # seconds between reconnect sweeps

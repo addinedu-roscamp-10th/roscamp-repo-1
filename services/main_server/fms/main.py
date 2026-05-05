@@ -9,14 +9,10 @@ from PIL import Image
 from pydantic import BaseModel
 from fms.robot_manager import fleet
 
-<<<<<<< HEAD
-MAP_PGM  = "/home/team1/roscamp-repo-1/src/devices/sshopy/common/src/pinky_pro/pinky_navigation/maps/moosinsa_map.pgm"
-=======
 MAP_PGM  = os.path.abspath(os.path.join(
     os.path.dirname(__file__),
     "../../../src/devices/sshopy/common/src/pinky_pro/pinky_navigation/maps/moosinsa_map.pgm"
 ))
->>>>>>> 7a6088c (Fix: admin_ui 입고, 회수 버튼 클릭시 오류 수정)
 MAP_META = {"resolution": 0.020, "origin": [-0.276, -0.229], "width": 103, "height": 56}
 
 

@@ -1169,7 +1169,7 @@ class _TryonReq(BaseModel):
     color: Optional[str] = None
     size: Optional[str] = None
     seat_id: int = 1                    # 1~4 (시착존 번호)
-    robot_id: str = "sshopy2"           # 운용 가능한 핑키 ID
+    robot_id: str = "sshopy1"           # 운용 가능한 핑키 ID
 
 @app.post("/tryon/request")
 async def endpoint_tryon_request(req: _TryonReq):
@@ -1189,7 +1189,7 @@ async def endpoint_tryon_request(req: _TryonReq):
     [데이터 흐름]
     역할: 키오스크에서 고객의 시착 요청을 수신하여 로봇에게 창고 → 시착존 이동을 명령한다.
     요청 데이터: product_id(상품 ID), color(색상), size(사이즈),
-                 seat_id(시착존 번호 1~4), robot_id(로봇 ID, 기본값 "sshopy2")
+                 seat_id(시착존 번호 1~4), robot_id(로봇 ID, 기본값 "sshopy1")
     fleet 호출: fleet.start_tryon(robot_id, seat_id, product_id, color, size)
                 → SShopy가 창고(TRYON_WAREJET)로 이동 후 WareJet 상차 → 시착존 이동 시작
     반환/응답: 성공 시 {success: True, robot_id, seat_id, product_id}
@@ -1217,7 +1217,7 @@ async def endpoint_tryon_request(req: _TryonReq):
     }
 
 @app.post("/pickup/complete")
-async def endpoint_pickup_complete(robot_id: str = "sshopy2"):
+async def endpoint_pickup_complete(robot_id: str = "sshopy1"):
     """
     수령 완료 엔드포인트 (TC 2-19).
     좌석 해제 + 회수존 이동 + 홈 복귀 트리거.
@@ -1234,7 +1234,7 @@ async def endpoint_pickup_complete(robot_id: str = "sshopy2"):
     [데이터 흐름]
     역할: 고객이 '수령 완료' 버튼을 누르면 해당 로봇의 시착존 좌석을 해제하고
           회수존(TRYON_FRONTJET) → 홈(TRYON_HOME) 복귀를 명령한다.
-    요청 데이터: robot_id (query param, 기본값 "sshopy2")
+    요청 데이터: robot_id (query param, 기본값 "sshopy1")
     fleet 호출: fleet.complete_pickup(robot_id)
                 → 좌석 해제 + SShopy TRYON_STAGE_TO_FRONTJET → TRYON_STAGE_TO_HOME 전이
     반환/응답: 성공 시 {success: True, robot_id}
@@ -1523,7 +1523,7 @@ class KioskTryonProgressRequest(BaseModel):           # ★ NEW ★
     kiosk_tryon_delivery → POST /kiosk/tryon/progress
     robot_id를 기준으로 현재 배송 진행 상태를 조회한다.
     """
-    robot_id: str = "sshopy2"
+    robot_id: str = "sshopy1"
 
 
 # ── [9-2] 키오스크 전용 WebSocket: /ws/kiosk/amr ─────────────

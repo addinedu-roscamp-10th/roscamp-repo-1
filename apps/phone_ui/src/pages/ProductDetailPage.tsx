@@ -469,7 +469,7 @@ export default function ProductDetailPage() {
    *   - 도착 감지: WS {API}/ws/amr → AMR_ARRIVE → ArrivalModal 자동 표시
    *   - 수령 완료: ArrivalModal onClose에서 POST {API}/pickup/complete
    * ============================================================ */
-  const TRYON_ROBOT_ID = 'sshopy2';   // 임시 하드코딩
+  const TRYON_ROBOT_ID = 'sshopy1';   // 임시 하드코딩
 
   const handleTryOnRequest = async () => {
     if (!API) {
